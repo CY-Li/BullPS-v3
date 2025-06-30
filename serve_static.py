@@ -17,3 +17,5 @@ app.mount("/", StaticFiles(directory="frontend_dist", html=True), name="static")
 async def spa_fallback(full_path: str):
     index_path = os.path.join("frontend_dist", "index.html")
     return FileResponse(index_path) 
+
+print("backend_app:", backend_app)
