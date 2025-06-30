@@ -49,4 +49,6 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 EXPOSE 8080
 
 # 啟動命令
-CMD ["sh", "-c", "uvicorn backend.main:app --host 0.0.0.0 --port ${PORT:-8080}"]
+COPY start.sh ./
+RUN chmod +x /app/start.sh
+CMD ["/app/start.sh"]
