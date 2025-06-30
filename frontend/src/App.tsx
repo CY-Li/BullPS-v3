@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import {
-  Container, Typography, Button, CircularProgress, Box, Paper, Chip, Alert, Card, CardContent, Accordion, AccordionSummary, AccordionDetails
+  Container, Typography, Button, CircularProgress, Box, Chip, Alert, Card, CardContent, Accordion, AccordionSummary, AccordionDetails
 } from "@mui/material";
 import { createTheme, ThemeProvider } from "@mui/material/styles";
 import RefreshIcon from "@mui/icons-material/Refresh";
@@ -212,37 +212,6 @@ function App() {
       case 'completed': return '✅';
       case 'error': return '❌';
       default: return '';
-    }
-  };
-
-  const formatAnalysisResult = (analysisData: any) => {
-    if (!analysisData) return "尚無分析結果";
-    
-    try {
-      const { timestamp, analysis_date, total_stocks, analyzed_stocks, result } = analysisData;
-      
-      if (!result || !Array.isArray(result)) {
-        return "分析結果格式錯誤";
-      }
-      
-      // 格式化顯示全部分析結果
-      let formattedText = `分析時間: ${analysis_date || timestamp}\n`;
-      formattedText += `分析股票數: ${analyzed_stocks}/${total_stocks}\n\n`;
-      formattedText += `🏆 全部分析結果 (共${result.length}支股票):\n`;
-      
-      result.forEach((stock: any, index: number) => {
-        formattedText += `\n${index + 1}. ${stock.symbol} (${stock.name})\n`;
-        formattedText += `   進場建議: ${stock.entry_opportunity}\n`;
-        formattedText += `   信心度: ${stock.confidence_score}/100 (${stock.confidence_level})\n`;
-        formattedText += `   當前價格: $${stock.current_price?.toFixed(2)}\n`;
-        formattedText += `   抄底價位: $${stock.long_signal_price?.toFixed(2)}\n`;
-        formattedText += `   RSI: ${stock.rsi?.toFixed(1)} | 成交量比率: ${stock.volume_ratio?.toFixed(2)}\n`;
-      });
-      
-      return formattedText;
-    } catch (error) {
-      console.error('Error formatting analysis result:', error);
-      return "格式化分析結果時發生錯誤";
     }
   };
 
