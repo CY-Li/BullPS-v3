@@ -415,15 +415,23 @@ function App() {
                           </Box>
                           
                           {/* 綜合評分 */}
-                          <Box sx={{ mb: 2, p: 1, backgroundColor: '#f5f5f5', borderRadius: 1 }}>
+                          <Box
+                            sx={theme => ({
+                              mb: 2,
+                              p: 1,
+                              borderRadius: 1,
+                              bgcolor: theme.palette.mode === 'dark' ? theme.palette.background.paper : '#f5f5f5',
+                              color: theme.palette.text.primary,
+                            })}
+                          >
                             <Typography variant="body2" sx={{ fontWeight: 'bold', mb: 0.5, fontSize: '14px' }}>
                               綜合評分: {stock.composite_score?.toFixed(1) || 'N/A'}
                             </Typography>
-                            <Typography variant="body2" color="text.secondary" sx={{ fontSize: '14px' }}>
+                            <Typography variant="body2" sx={{ fontSize: '14px' }}>
                               進場建議: {stock.entry_opportunity || 'N/A'}
                             </Typography>
-                            <Typography variant="body2" color="text.secondary" sx={{ fontSize: '14px' }}>
-                              信心度: {stock.confidence_score}/100 ({stock.confidence_level})
+                            <Typography variant="body2" sx={{ fontSize: '14px' }}>
+                              信心度: {stock.confidence_score !== undefined ? Math.round(stock.confidence_score) : 'N/A'}/100 ({stock.confidence_level})
                             </Typography>
                           </Box>
                           
