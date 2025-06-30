@@ -17,4 +17,4 @@ RUN pip install -r backend/requirements.txt
 
 # 3. Expose port and run
 EXPOSE 8080
-CMD ["uvicorn", "serve_static:app", "--host", "0.0.0.0", "--port", "8080"] 
+CMD ["uvicorn", "serve_static:app", "--host", "0.0.0.0", "--port", "${PORT:-8080}"]
