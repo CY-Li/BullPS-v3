@@ -14,6 +14,7 @@ from datetime import datetime
 import warnings
 import time
 warnings.filterwarnings('ignore')
+from pathlib import Path
 
 class IntegratedStockAnalyzer:
     def __init__(self, watchlist_file='stock_watchlist.json'):
@@ -1568,6 +1569,28 @@ def main():
     results = analyzer.analyze_watchlist()
     analyzer.generate_report(results)
     analyzer.save_csv(results)
+    
+    # 新增：輸出 analysis_result.json 供前端使用
+    if not results.empty:
+        analysis_result = {
+            "timestamp": datetime.now().isoformat(),
+            "analysis_date": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            "total_stocks": len(analyzer.stocks),
+            "analyzed_stocks": len(results),
+            "result": results.to_dict('records')
+        }
+        
+        # 在根目錄創建
+        with open('analysis_result.json', 'w', encoding='utf-8') as f:
+            json.dump(analysis_result, f, indent=2, ensure_ascii=False)
+        print(f"💾 分析結果已儲存至 analysis_result.json")
+        
+        # 在 backend 目錄也創建一份
+        backend_path = Path("backend/analysis_result.json")
+        backend_path.parent.mkdir(exist_ok=True)
+        with open(backend_path, 'w', encoding='utf-8') as f:
+            json.dump(analysis_result, f, indent=2, ensure_ascii=False)
+        print(f"💾 分析結果已儲存至 backend/analysis_result.json")
     
     print("\n✅ 整合分析完成！")
 
