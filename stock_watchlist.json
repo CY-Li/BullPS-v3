@@ -18,7 +18,8 @@
     "NKE",
     "MSFT",
     "HIMS",
-    "TLT"
+    "TLT",
+    "SPY"
   ],
   "settings": {
     "analysis_period": 60,
