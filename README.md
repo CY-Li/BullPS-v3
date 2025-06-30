@@ -161,3 +161,126 @@ python stock_analyzer.py
 **開發者**：資深股票交易員兼程式設計師  
 **版本**：2.0.0  
 **更新日期**：2024年 
+
+# 選擇權交易量掃描器
+
+一個簡化的Python程式，用於掃描美股選擇權交易量並自動更新 `stock_watchlist.json` 監控清單。
+
+## 功能特色
+
+- 🔍 **快速掃描**: 掃描主要美股的選擇權交易量
+- 📊 **數據分析**: 顯示看漲/看跌選擇權交易量和比率
+- 📋 **自動更新**: 自動更新 `stock_watchlist.json` 監控清單
+- 💾 **備份保護**: 自動備份原始監控清單文件
+- ⚙️ **靈活配置**: 支援自定義股票列表和配置
+
+## 檔案說明
+
+### 主要程式
+- `quick_options_scanner.py` - 快速掃描器（推薦使用）
+- `options_volume_tracker_v2.py` - 完整版追蹤器
+- `options_volume_config.py` - 配置文件
+
+### 執行腳本
+- `run_options_scanner.bat` - Windows批次檔案
+- `run_options_scanner.ps1` - PowerShell腳本
+
+### 輸出文件
+- `stock_watchlist.json` - 監控清單（自動更新）
+- `stock_watchlist.json.backup` - 備份文件
+- `options_tracker.log` - 日誌文件
+
+## 使用方法
+
+### 方法1: 直接執行Python
+```bash
+python quick_options_scanner.py
+```
+
+### 方法2: 使用批次檔案
+```bash
+run_options_scanner.bat
+```
+
+### 方法3: 使用PowerShell
+```powershell
+.\run_options_scanner.ps1
+```
+
+## 程式流程
+
+1. **輸入股票列表**: 可以自定義要掃描的股票，或使用預設列表
+2. **掃描選擇權數據**: 獲取每支股票的選擇權交易量
+3. **顯示排行榜**: 按交易量排序顯示結果
+4. **更新監控清單**: 選擇是否更新 `stock_watchlist.json`
+5. **備份保護**: 自動備份原始文件
+
+## 預設股票列表
+
+程式預設掃描以下20支主要美股：
+- 科技股: AAPL, MSFT, GOOGL, AMZN, TSLA, META, NVDA, NFLX, AMD, INTC
+- ETF: SPY, QQQ, IWM, VIX, UVXY, TQQQ, SQQQ, SOXL, SOXS, TVIX
+
+## 輸出範例
+
+```
+選擇權交易量排行榜
+============================================================
+生成時間: 2025-06-30 10:42:38
+============================================================
+ 1. SPY
+    總交易量: 1,542,309.0
+    看漲: 754,310.0 | 看跌: 787,999.0
+    看跌/看漲比率: 1.04
+    到期日: 2025-06-30
+
+ 2. NVDA
+    總交易量: 1,071,554.0
+    看漲: 640,526.0 | 看跌: 431,028.0
+    看跌/看漲比率: 0.67
+    到期日: 2025-07-03
+```
+
+## 監控清單格式
+
+更新後的 `stock_watchlist.json` 格式：
+```json
+{
+  "stocks": [
+    "SPY",
+    "NVDA",
+    "TSLA",
+    "QQQ",
+    "AMZN"
+  ],
+  "settings": {
+    "analysis_period": 60,
+    "rsi_oversold": 30,
+    "rsi_overbought": 70
+  }
+}
+```
+
+## 依賴套件
+
+- `yfinance` - Yahoo Finance數據
+- `pandas` - 數據處理
+- `requests` - HTTP請求
+
+## 安裝依賴
+
+```bash
+pip install yfinance pandas requests
+```
+
+## 注意事項
+
+- 程式會自動備份原始的 `stock_watchlist.json` 文件
+- 建議在美股交易時間執行以獲得最新數據
+- 避免過於頻繁的API請求以避免限制
+- 某些股票可能沒有選擇權數據
+
+## 版本歷史
+
+- **v2.0**: 簡化版本，專注於更新監控清單
+- **v1.0**: 完整版本，包含多種輸出格式和歷史追蹤 
