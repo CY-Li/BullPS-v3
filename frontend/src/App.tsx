@@ -1,20 +1,18 @@
 import { useEffect, useState } from "react";
 import {
-  Container, Typography, Button, CircularProgress, Box, Chip, Alert, Card, CardContent, Accordion, AccordionSummary, AccordionDetails
+  Container, Typography, Button, CircularProgress, Box, Chip, Alert, Card, CardContent, Accordion, AccordionSummary, AccordionDetails, IconButton
 } from "@mui/material";
 import { createTheme, ThemeProvider } from "@mui/material/styles";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import Brightness4Icon from '@mui/icons-material/Brightness4';
+import Brightness7Icon from '@mui/icons-material/Brightness7';
 import axios from "axios";
 import { blue, green, orange } from "@mui/material/colors";
 
-const theme = createTheme({
-  palette: {
-    primary: { main: blue[700] },
-    mode: "light",
-  },
-  shape: { borderRadius: 12 },
-});
+// 新增：主題模式 state，預設跟隨系統
+const getSystemTheme = () =>
+  window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 
 type ProcessingStatus = 'idle' | 'updating' | 'analyzing' | 'completed' | 'error';
 
@@ -34,6 +32,23 @@ function App() {
   const [status, setStatus] = useState<ProcessingStatus>('idle');
   const [statusMessage, setStatusMessage] = useState<string>("");
   const [stockPrices, setStockPrices] = useState<{ [key: string]: StockPrice }>({});
+  const [themeMode, setThemeMode] = useState<'light' | 'dark'>(getSystemTheme());
+
+  // 監聽系統主題變化
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const handler = (e: MediaQueryListEvent) => setThemeMode(e.matches ? 'dark' : 'light');
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
+
+  const theme = createTheme({
+    palette: {
+      primary: { main: blue[700] },
+      mode: themeMode,
+    },
+    shape: { borderRadius: 12 },
+  });
 
   // 取得股票現價的函數
   const fetchStockPrice = async (symbol: string) => {
@@ -250,6 +265,12 @@ function App() {
 
   return (
     <ThemeProvider theme={theme}>
+      {/* 黑暗模式切換按鈕，建議放在右上角 */}
+      <Box sx={{ position: 'absolute', top: 16, right: 24, zIndex: 10 }}>
+        <IconButton onClick={() => setThemeMode(themeMode === 'light' ? 'dark' : 'light')} color="inherit">
+          {themeMode === 'dark' ? <Brightness7Icon /> : <Brightness4Icon />}
+        </IconButton>
+      </Box>
       <Container maxWidth={false} sx={{ py: 4, px: 0, width: '100%' }}>
         <Typography variant="h4" gutterBottom fontWeight={700}>
           Bull Put Spread 選股神器
@@ -297,18 +318,18 @@ function App() {
           </Box>
         )}
         
-        {/* 分析結果摘要區塊（移到最上方） */}
+        {/* 分析結果摘要區塊 */}
         <Box sx={{ my: 3, px: { xs: 2, sm: 3, md: 4 } }}>
           <Accordion 
             defaultExpanded
             elevation={0}
             sx={{
+              backgroundColor: 'transparent !important',
               '&.MuiAccordion-root': {
                 boxShadow: 'none',
                 borderRadius: 0,
-                '&:before': {
-                  display: 'none',
-                },
+                backgroundColor: 'transparent !important',
+                '&:before': { display: 'none' },
               },
               '& .MuiAccordionSummary-root': {
                 padding: 0,
@@ -363,7 +384,7 @@ function App() {
                           }
                         }}
                       >
-                        <CardContent sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        <CardContent sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 2, bgcolor: 'background.paper', color: 'text.primary' }}>
                           {/* 排名和股票資訊 */}
                           <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
                             <Box 
@@ -531,12 +552,12 @@ function App() {
           <Accordion 
             elevation={0}
             sx={{
+              backgroundColor: 'transparent !important',
               '&.MuiAccordion-root': {
                 boxShadow: 'none',
                 borderRadius: 0,
-                '&:before': {
-                  display: 'none',
-                },
+                backgroundColor: 'transparent !important',
+                '&:before': { display: 'none' },
               },
               '& .MuiAccordionSummary-root': {
                 padding: 0,
@@ -585,7 +606,7 @@ function App() {
                           }
                         }}
                       >
-                        <CardContent sx={{ p: 2, textAlign: 'center' }}>
+                        <CardContent sx={{ p: 2, textAlign: 'center', bgcolor: 'background.paper', color: 'text.primary' }}>
                           {/* 排名徽章 */}
                           <Box 
                             sx={{ 
