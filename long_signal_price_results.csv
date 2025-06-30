@@ -1,0 +1,5 @@
+﻿symbol,name,market,long_signal_price,min_low,bb_lower,ma30,signal_price,max_vol_low,rsi_oversold_low,confidence
+AAPL,Apple Inc.,US,201.92,193.46,195.82,201.92,201.0,196.86,193.46,85
+TSLA,"Tesla, Inc.",US,333.42,273.21,291.63,333.42,295.14,273.21,273.21,55
+NVDA,NVIDIA Corporation,US,140.47,129.15,134.1,140.47,135.56,137.9,129.15,70
+SPY,SPDR S&P 500 ETF,US,593.97,573.9,585.09,593.97,587.65,580.11,573.9,100

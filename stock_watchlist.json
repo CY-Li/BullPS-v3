@@ -1,0 +1,28 @@
+{
+  "stocks": [
+    "QQQ",
+    "TSLA",
+    "NVDA",
+    "IWM",
+    "AAPL",
+    "AMD",
+    "SMCI",
+    "COIN",
+    "PLTR",
+    "AMZN",
+    "META",
+    "CORZ",
+    "MU",
+    "CRCL",
+    "SOFI",
+    "NKE",
+    "MSFT",
+    "HIMS",
+    "TLT"
+  ],
+  "settings": {
+    "analysis_period": 60,
+    "rsi_oversold": 30,
+    "rsi_overbought": 70
+  }
+} 

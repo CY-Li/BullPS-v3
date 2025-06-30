@@ -1,0 +1,5 @@
+﻿symbol,name,market,long_days,latest_signal_date,latest_signal_price,signal_conditions,current_price,current_date,rsi,macd,volume_ratio,entry_opportunity,price_change_since_signal,confidence_score,confidence_level,confidence_factors,status
+AAPL,Apple Inc.,US,6.0,2025-06-20,201.0,"['放量上漲', '動量轉正']",201.0,2025-06-26,50.66858573492595,-0.8521778352231308,0.9583547618133421,建議進場,0.0,80.0,極高,"['MACD柱狀圖為正', '價格在20日均線之上', '短期和中期動量均為正']",
+TSLA,"Tesla, Inc.",US,20.0,2025-06-06,295.1400146484375,"['RSI超賣反轉', '突破布林下軌']",325.7799987792969,2025-06-26,66.16304332425506,3.825228563906421,0.6476388640375484,觀望,10.38150796575546,50.0,中等,"['MACD為正', '成交量萎縮']",
+NVDA,NVIDIA Corporation,US,,,,,155.02000427246094,,77.10862393980916,5.875209201506806,0.9714577950254943,,,,,,無多頭訊號
+SPY,SPDR S&P 500 ETF,US,,,,,611.8699951171875,,70.28202125060037,7.548289083298187,1.0618623312503317,,,,,,無多頭訊號
