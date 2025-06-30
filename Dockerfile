@@ -16,5 +16,5 @@ RUN pip install --upgrade pip
 RUN pip install -r backend/requirements.txt
 
 # 3. Expose port and run
-EXPOSE 8000
-CMD ["uvicorn", "serve_static:app", "--host", "0.0.0.0", "--port", "8000"] 
+EXPOSE 8080
+CMD ["uvicorn", "serve_static:app", "--host", "0.0.0.0", "--port", "8080"] 
