@@ -14,6 +14,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     python3-dev \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # 先複製 requirements.txt 以利用緩存層
@@ -34,6 +35,7 @@ COPY --from=frontend-build /app/frontend/dist ./frontend_dist
 # 設置環境變量
 ENV PYTHONUNBUFFERED=1
 ENV PORT=8080
+ENV PYTHONPATH=/app
 
 # 創建非 root 用戶
 RUN useradd -m appuser && chown -R appuser:appuser /app
