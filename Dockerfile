@@ -4,7 +4,7 @@ WORKDIR /app/frontend
 COPY frontend/package*.json ./
 RUN npm install
 COPY frontend ./
-RUN npm run build
+RUN npm run build && ls -la dist
 
 # 2. Build backend
 FROM python:3.12-slim AS backend
@@ -30,7 +30,8 @@ COPY integrated_stock_analyzer.py ./
 COPY options_volume_tracker_v2.py ./
 
 # 複製前端構建產物
-COPY --from=frontend-build /app/frontend/dist ./frontend_dist
+COPY --from=frontend-build /app/frontend/dist ./frontend/dist
+RUN ls -la frontend/dist
 
 # 設置環境變量
 ENV PYTHONUNBUFFERED=1

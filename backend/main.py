@@ -87,7 +87,13 @@ def schedule_daily_task():
 
 @app.get("/api/health")
 def health_check():
-    return {"status": "healthy", "timestamp": datetime.now().isoformat()}
+    return {
+        "status": "healthy",
+        "timestamp": datetime.now().isoformat(),
+        "static_dir_exists": STATIC_DIR.exists(),
+        "static_dir_path": str(STATIC_DIR),
+        "files_in_static": os.listdir(STATIC_DIR) if STATIC_DIR.exists() else []
+    }
 
 @app.post("/api/run-now")
 def run_now(background_tasks: BackgroundTasks):
@@ -157,6 +163,7 @@ def get_single_stock_price(symbol: str):
 
 # 靜態檔案 - 放在 API 路由之後
 if STATIC_DIR.exists():
+    logger.info(f"Mounting static files from {STATIC_DIR}")
     app.mount("/", StaticFiles(directory=str(STATIC_DIR), html=True), name="static")
 else:
     logger.error(f"Static directory not found at {STATIC_DIR}")
@@ -170,6 +177,7 @@ async def spa_fallback(request: Request, call_next):
     if response.status_code == 404:
         index_path = STATIC_DIR / "index.html"
         if index_path.exists():
+            logger.info(f"Serving index.html for path: {request.url.path}")
             return FileResponse(index_path)
         else:
             logger.error(f"Index file not found at {index_path}")
