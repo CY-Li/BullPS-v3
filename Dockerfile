@@ -32,12 +32,16 @@ COPY options_volume_tracker_v2.py ./
 # 複製前端構建產物
 COPY --from=frontend-build /app/frontend/dist ./frontend_dist
 
+# 複製並設置啟動腳本
+COPY start.sh ./
+RUN chmod +x /app/start.sh
+
 # 設置環境變量
 ENV PYTHONUNBUFFERED=1
 ENV PORT=8080
 ENV PYTHONPATH=/app
 
-# 創建非 root 用戶
+# 創建非 root 用戶並設置權限
 RUN useradd -m appuser && chown -R appuser:appuser /app
 USER appuser
 
@@ -49,6 +53,4 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 EXPOSE 8080
 
 # 啟動命令
-COPY start.sh ./
-RUN chmod +x /app/start.sh
 CMD ["/app/start.sh"]
