@@ -25,7 +25,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # 複製後端代碼和數據文件
 COPY backend ./backend
 COPY stock_watchlist.json ./
-COPY analysis_result.json ./
+# COPY analysis_result.json ./
 COPY integrated_stock_analyzer.py ./
 COPY options_volume_tracker_v2.py ./
 
