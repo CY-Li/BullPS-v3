@@ -13,6 +13,7 @@ import yfinance as yf
 from datetime import datetime
 import warnings
 import time
+import pytz
 warnings.filterwarnings('ignore')
 from pathlib import Path
 
@@ -1405,17 +1406,23 @@ class IntegratedStockAnalyzer:
     def analyze_watchlist(self):
         results = []
         
-        for symbol in self.stocks:
+        print(f"📊 開始分析 {len(self.stocks)} 支股票...")
+        
+        for i, symbol in enumerate(self.stocks):
+            print(f"   正在分析 {symbol} ({i+1}/{len(self.stocks)})...")
             result = self.analyze_stock(symbol)
             if result:
                 results.append(result)
             time.sleep(1)
+        
+        print("🔄 正在整合分析結果...")
         
         # 轉換為DataFrame
         df_results = pd.DataFrame(results)
         
         # 計算綜合評分
         if not df_results.empty:
+            print("📈 正在計算綜合評分...")
             df_results['composite_score'] = 0
             
             # 有訊號的股票
@@ -1452,6 +1459,7 @@ class IntegratedStockAnalyzer:
             # 按綜合評分排序
             df_results = df_results.sort_values('composite_score', ascending=False, na_position='last')
         
+        print("✅ 分析結果整合完成")
         return df_results
     
     def generate_report(self, results_df):
@@ -1566,15 +1574,23 @@ def main():
     print("🚀 啟動整合股票分析系統...")
     
     analyzer = IntegratedStockAnalyzer()
+    
+    print("📊 開始股票分析...")
     results = analyzer.analyze_watchlist()
+    
+    print("📋 正在生成分析報告...")
     analyzer.generate_report(results)
+    
+    print("💾 正在儲存分析結果...")
     analyzer.save_csv(results)
     
     # 新增：輸出 analysis_result.json 供前端使用
     if not results.empty:
+        tz = pytz.timezone('Asia/Taipei')
+        now = datetime.now(tz)
         analysis_result = {
-            "timestamp": datetime.now().isoformat(),
-            "analysis_date": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            "timestamp": now.isoformat(),
+            "analysis_date": now.strftime('%Y-%m-%d %H:%M:%S'),
             "total_stocks": len(analyzer.stocks),
             "analyzed_stocks": len(results),
             "result": results.to_dict('records')

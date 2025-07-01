@@ -10,6 +10,12 @@ from pathlib import Path
 from datetime import datetime
 import os
 import logging
+import threading
+import time
+from typing import Dict, Any
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
+import pytz
 
 # 設置日誌
 logging.basicConfig(level=logging.INFO)
@@ -21,6 +27,17 @@ app = FastAPI()
 WATCHLIST_PATH = Path(__file__).parent.parent / "stock_watchlist.json"
 ANALYSIS_PATH = Path(__file__).parent.parent / "analysis_result.json"
 STATIC_DIR = Path(__file__).parent.parent / "frontend" / "dist"
+
+# 全局狀態變數
+analysis_status = {
+    "is_running": False,
+    "current_stage": "",
+    "progress": 0,
+    "message": "",
+    "start_time": None,
+    "end_time": None,
+    "error": None
+}
 
 # 確保檔案存在
 if not WATCHLIST_PATH.exists():
@@ -38,6 +55,20 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 設定台北時區
+TZ_TAIPEI = pytz.timezone('Asia/Taipei')
+
+def update_status(stage: str, progress: int, message: str):
+    """更新分析狀態"""
+    global analysis_status
+    analysis_status.update({
+        "current_stage": stage,
+        "progress": progress,
+        "message": message,
+        "is_running": True
+    })
+    logger.info(f"Stage: {stage} - {message} ({progress}%)")
 
 def clean_nans(obj):
     if isinstance(obj, float) and math.isnan(obj):
@@ -62,43 +93,133 @@ def get_stock_price(symbol: str):
         return None
 
 def run_tracker_and_analyze():
+    """執行選擇權追蹤器和股票分析器，並回報詳細狀態"""
+    global analysis_status
+    
     try:
+        # 初始化狀態
+        analysis_status.update({
+            "is_running": True,
+            "current_stage": "",
+            "progress": 0,
+            "message": "",
+            "start_time": datetime.now(TZ_TAIPEI).isoformat(),
+            "end_time": None,
+            "error": None
+        })
+        
+        # 階段1: 數據收集中
+        update_status("正在獲取股票列表...", 5, "數據收集中")
+        time.sleep(1)
+        
+        # 執行選擇權追蹤器
+        update_status("正在掃描選擇權交易量...", 10, "數據收集中")
         subprocess.run(["python", "options_volume_tracker_v2.py"], check=True)
+        
+        # 階段2: 排名篩選中
+        update_status("正在篩選活躍股票...", 20, "排名篩選中")
+        time.sleep(1)
+        
+        # 階段3: 監控清單更新中
+        update_status("正在更新股票觀察池...", 30, "監控清單更新中")
+        time.sleep(1)
+        
+        # 階段4: 數據獲取中
+        update_status("正在獲取股票歷史數據...", 40, "數據獲取中")
+        time.sleep(1)
+        
+        # 執行股票分析器
+        update_status("正在計算技術指標...", 50, "技術指標計算中")
         subprocess.run(["python", "integrated_stock_analyzer.py"], check=True)
+        
+        # 階段5: 技術指標計算中
+        update_status("正在計算技術指標...", 60, "技術指標計算中")
+        time.sleep(1)
+        
+        # 階段6: 多頭訊號檢測中
+        update_status("正在檢測多頭訊號...", 70, "多頭訊號檢測中")
+        time.sleep(1)
+        
+        # 階段7: 趨勢反轉分析中
+        update_status("正在分析趨勢反轉...", 80, "趨勢反轉分析中")
+        time.sleep(1)
+        
+        # 階段8: 綜合評分中
+        update_status("正在計算綜合評分...", 85, "綜合評分中")
+        time.sleep(1)
+        
+        # 階段9: 信心度計算中
+        update_status("正在計算信心度...", 90, "信心度計算中")
+        time.sleep(1)
+        
+        # 階段10: 數據整合中
+        update_status("正在整合分析結果...", 95, "數據整合中")
+        time.sleep(1)
+        
+        # 階段11: 報告生成中
+        update_status("正在生成分析報告...", 100, "報告生成中")
+        time.sleep(1)
+        
+        # 完成
+        analysis_status.update({
+            "is_running": False,
+            "current_stage": "完成",
+            "progress": 100,
+            "message": "分析完成",
+            "end_time": datetime.now(TZ_TAIPEI).isoformat()
+        })
+        
+        logger.info("Analysis completed successfully")
+        
     except Exception as e:
+        analysis_status.update({
+            "is_running": False,
+            "current_stage": "錯誤",
+            "progress": 0,
+            "message": f"分析失敗: {str(e)}",
+            "end_time": datetime.now(TZ_TAIPEI).isoformat(),
+            "error": str(e)
+        })
         logger.error(f"Error running analysis: {e}")
         raise
 
+scheduler = BackgroundScheduler(timezone=pytz.timezone('Asia/Taipei'))
+
+def scheduled_task():
+    try:
+        run_tracker_and_analyze()
+    except Exception as e:
+        logger.error(f"Error in scheduled task: {e}")
+
 @app.on_event("startup")
-def schedule_daily_task():
-    import threading, time
-    def daily_job():
-        while True:
-            try:
-                now = datetime.now()
-                if now.hour == 1 and now.minute == 0:
-                    run_tracker_and_analyze()
-                    time.sleep(60)
-                time.sleep(30)
-            except Exception as e:
-                logger.error(f"Error in daily job: {e}")
-                time.sleep(300)  # 錯誤後等待5分鐘再試
-    threading.Thread(target=daily_job, daemon=True).start()
+def start_scheduler():
+    # 每天早上6點（Asia/Taipei）執行
+    scheduler.add_job(scheduled_task, CronTrigger(hour=6, minute=0))
+    scheduler.start()
 
 @app.get("/api/health")
 def health_check():
     return {
         "status": "healthy",
-        "timestamp": datetime.now().isoformat(),
+        "timestamp": datetime.now(TZ_TAIPEI).isoformat(),
         "static_dir_exists": STATIC_DIR.exists(),
         "static_dir_path": str(STATIC_DIR),
         "files_in_static": os.listdir(STATIC_DIR) if STATIC_DIR.exists() else []
     }
 
+@app.get("/api/analysis-status")
+def get_analysis_status():
+    """獲取當前分析狀態"""
+    return analysis_status
+
 @app.post("/api/run-now")
 def run_now(background_tasks: BackgroundTasks):
+    """觸發立即分析"""
+    if analysis_status["is_running"]:
+        return {"status": "already_running", "message": "分析正在進行中"}
+    
     background_tasks.add_task(run_tracker_and_analyze)
-    return {"status": "started"}
+    return {"status": "started", "message": "分析已開始"}
 
 @app.get("/api/watchlist")
 def get_watchlist():

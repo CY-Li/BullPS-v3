@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import {
-  Container, Typography, Button, CircularProgress, Box, Chip, Alert, Card, CardContent, Accordion, AccordionSummary, AccordionDetails, IconButton
+  Container, Typography, Button, CircularProgress, Box, Chip, Alert, Card, CardContent, Accordion, AccordionSummary, AccordionDetails, IconButton, LinearProgress
 } from "@mui/material";
 import { createTheme, ThemeProvider } from "@mui/material/styles";
 import RefreshIcon from "@mui/icons-material/Refresh";
@@ -8,13 +8,24 @@ import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import Brightness4Icon from '@mui/icons-material/Brightness4';
 import Brightness7Icon from '@mui/icons-material/Brightness7';
 import axios from "axios";
-import { blue, green, orange } from "@mui/material/colors";
+import { blue, green, orange, red } from "@mui/material/colors";
 
 // 新增：主題模式 state，預設跟隨系統
 const getSystemTheme = () =>
   window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 
 type ProcessingStatus = 'idle' | 'updating' | 'analyzing' | 'completed' | 'error';
+
+// 分析狀態介面
+interface AnalysisStatus {
+  is_running: boolean;
+  current_stage: string;
+  progress: number;
+  message: string;
+  start_time: string | null;
+  end_time: string | null;
+  error: string | null;
+}
 
 // 股票價格介面
 interface StockPrice {
@@ -33,6 +44,11 @@ function App() {
   const [statusMessage, setStatusMessage] = useState<string>("");
   const [stockPrices, setStockPrices] = useState<{ [key: string]: StockPrice }>({});
   const [themeMode, setThemeMode] = useState<'light' | 'dark'>(getSystemTheme());
+  const [analysisStatus, setAnalysisStatus] = useState<AnalysisStatus | null>(null);
+  const [showDetailedProgress, setShowDetailedProgress] = useState(false);
+  
+  // 輪詢狀態的 ref
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // 監聽系統主題變化
   useEffect(() => {
@@ -42,6 +58,15 @@ function App() {
     return () => mq.removeEventListener('change', handler);
   }, []);
 
+  // 清理輪詢
+  useEffect(() => {
+    return () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+      }
+    };
+  }, []);
+
   const theme = createTheme({
     palette: {
       primary: { main: blue[700] },
@@ -49,6 +74,57 @@ function App() {
     },
     shape: { borderRadius: 12 },
   });
+
+  // 獲取分析狀態
+  const fetchAnalysisStatus = async () => {
+    try {
+      const response = await axios.get('/api/analysis-status');
+      const status = response.data;
+      setAnalysisStatus(status);
+      
+      // 如果分析完成，停止輪詢
+      if (!status.is_running && status.current_stage === "完成") {
+        if (pollingIntervalRef.current) {
+          clearInterval(pollingIntervalRef.current);
+          pollingIntervalRef.current = null;
+        }
+        setStatus('completed');
+        setStatusMessage("分析完成");
+        setShowDetailedProgress(false);
+        
+        // 3秒後清除完成狀態
+        setTimeout(() => {
+          setStatus('idle');
+          setStatusMessage("");
+        }, 3000);
+        
+        // 重新獲取數據
+        await fetchData();
+      } else if (status.error) {
+        if (pollingIntervalRef.current) {
+          clearInterval(pollingIntervalRef.current);
+          pollingIntervalRef.current = null;
+        }
+        setStatus('error');
+        setStatusMessage(`分析失敗: ${status.error}`);
+        setShowDetailedProgress(false);
+      }
+      
+    } catch (error) {
+      console.error('Error fetching analysis status:', error);
+    }
+  };
+
+  // 開始輪詢分析狀態
+  const startStatusPolling = () => {
+    // 清除現有的輪詢
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+    }
+    
+    // 開始新的輪詢，每2秒檢查一次
+    pollingIntervalRef.current = setInterval(fetchAnalysisStatus, 2000);
+  };
 
   // 取得股票現價的函數
   const fetchStockPrice = async (symbol: string) => {
@@ -184,27 +260,29 @@ function App() {
     setLoading(true);
     setStatus('updating');
     setStatusMessage("正在觸發分析...");
+    setShowDetailedProgress(true);
     
     try {
-      await axios.post("/api/run-now");
+      const response = await axios.post("/api/run-now");
+      
+      if (response.data.status === "already_running") {
+        setStatus('error');
+        setStatusMessage("分析正在進行中，請稍候");
+        setShowDetailedProgress(false);
+        setLoading(false);
+        return;
+      }
+      
       setStatus('analyzing');
       setStatusMessage("正在分析股票數據...");
       
-      // 等待10秒讓後端完成分析
-      setTimeout(async () => {
-        try {
-          setStatusMessage("正在獲取分析結果...");
-          await fetchData();
-        } catch (error) {
-          setStatus('error');
-          setStatusMessage("分析失敗，請稍後再試");
-          setLoading(false);
-        }
-      }, 10000);
+      // 開始輪詢狀態
+      startStatusPolling();
       
     } catch (error) {
       setStatus('error');
       setStatusMessage("觸發分析失敗");
+      setShowDetailedProgress(false);
       setLoading(false);
       console.error('Error triggering analysis:', error);
     }
@@ -215,7 +293,7 @@ function App() {
       case 'updating': return orange[600];
       case 'analyzing': return blue[600];
       case 'completed': return green[600];
-      case 'error': return 'error';
+      case 'error': return red[600];
       default: return 'default';
     }
   };
@@ -285,10 +363,11 @@ function App() {
             variant="contained"
             startIcon={<RefreshIcon />}
             onClick={handleManualRun}
-            disabled={loading}
+            disabled={loading || (analysisStatus?.is_running ?? false)}
           >
             {status === 'updating' ? '觸發分析中...' : 
              status === 'analyzing' ? '分析進行中...' : 
+             analysisStatus?.is_running ? '分析進行中...' :
              '立即更新'}
           </Button>
           
@@ -308,8 +387,59 @@ function App() {
           )}
         </Box>
         
+        {/* 詳細進度顯示 */}
+        {showDetailedProgress && analysisStatus && (
+          <Box sx={{ my: 2, px: { xs: 2, sm: 3, md: 4 } }}>
+            <Card elevation={2}>
+              <CardContent>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+                  <Typography variant="h6" fontWeight="bold">
+                    分析進度
+                  </Typography>
+                  <Chip 
+                    label={`${analysisStatus.progress}%`}
+                    color={analysisStatus.error ? "error" : "primary"}
+                    size="small"
+                  />
+                </Box>
+                
+                <LinearProgress 
+                  variant="determinate" 
+                  value={analysisStatus.progress} 
+                  sx={{ mb: 2, height: 8, borderRadius: 4 }}
+                />
+                
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                  <Typography variant="body2" fontWeight="bold" color="primary">
+                    當前階段：
+                  </Typography>
+                  <Typography variant="body2">
+                    {analysisStatus.current_stage}
+                  </Typography>
+                </Box>
+                
+                <Typography variant="body2" color="text.secondary">
+                  {analysisStatus.message}
+                </Typography>
+                
+                {analysisStatus.error && (
+                  <Alert severity="error" sx={{ mt: 2 }}>
+                    {analysisStatus.error}
+                  </Alert>
+                )}
+                
+                {analysisStatus.start_time && (
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+                    開始時間：{new Date(analysisStatus.start_time).toLocaleString("zh-TW")}
+                  </Typography>
+                )}
+              </CardContent>
+            </Card>
+          </Box>
+        )}
+        
         {/* 載入指示器 */}
-        {loading && (
+        {loading && !showDetailedProgress && (
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, px: { xs: 2, sm: 3, md: 4 } }}>
             <CircularProgress size={20} />
             <Typography variant="body2" color="text.secondary" sx={{ fontSize: '14px' }}>

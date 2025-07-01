@@ -17,6 +17,7 @@ import warnings
 from pathlib import Path
 import logging
 from typing import List, Dict, Optional
+import pytz
 
 # 導入配置
 try:
@@ -148,13 +149,11 @@ class OptionsVolumeTrackerV2:
     
     def get_options_volume(self, symbol: str) -> Dict:
         """獲取單一股票的選擇權交易量"""
+        tz = pytz.timezone('Asia/Taipei')
         for attempt in range(MAX_RETRIES):
             try:
                 ticker = yf.Ticker(symbol)
-                
-                # 獲取選擇權到期日
                 options = ticker.options
-                
                 if not options:
                     return {
                         'symbol': symbol,
@@ -163,25 +162,16 @@ class OptionsVolumeTrackerV2:
                         'put_volume': 0,
                         'put_call_ratio': 0,
                         'expiry': None,
-                        'timestamp': datetime.now().isoformat()
+                        'timestamp': datetime.now(tz).isoformat()
                     }
-                
-                # 使用最近的到期日
                 latest_expiry = options[0]
-                
-                # 獲取看漲和看跌選擇權
                 option_chain = ticker.option_chain(latest_expiry)
                 calls = option_chain.calls
                 puts = option_chain.puts
-                
-                # 計算交易量
                 call_volume = calls['volume'].sum() if not calls.empty else 0
                 put_volume = puts['volume'].sum() if not puts.empty else 0
                 total_volume = call_volume + put_volume
-                
-                # 計算看跌/看漲比率
                 put_call_ratio = put_volume / call_volume if call_volume > 0 else 0
-                
                 return {
                     'symbol': symbol,
                     'total_volume': total_volume,
@@ -189,9 +179,8 @@ class OptionsVolumeTrackerV2:
                     'put_volume': put_volume,
                     'put_call_ratio': put_call_ratio,
                     'expiry': latest_expiry,
-                    'timestamp': datetime.now().isoformat()
+                    'timestamp': datetime.now(tz).isoformat()
                 }
-                
             except Exception as e:
                 logging.warning(f"獲取 {symbol} 選擇權數據失敗 (嘗試 {attempt + 1}/{MAX_RETRIES}): {e}")
                 if attempt < MAX_RETRIES - 1:
@@ -204,154 +193,165 @@ class OptionsVolumeTrackerV2:
                         'put_volume': 0,
                         'put_call_ratio': 0,
                         'expiry': None,
-                        'timestamp': datetime.now().isoformat()
+                        'timestamp': datetime.now(tz).isoformat()
                     }
     
     def get_market_data(self, symbols: List[str]) -> pd.DataFrame:
-        """獲取股票的市場數據"""
-        try:
-            logging.info("正在獲取市場數據...")
-            
-            market_data = []
-            for symbol in symbols:
-                try:
-                    ticker = yf.Ticker(symbol)
-                    info = ticker.info
-                    
-                    # 獲取歷史數據來計算當前價格
-                    hist = ticker.history(period="1d")
-                    current_price = hist['Close'].iloc[-1] if not hist.empty else 0
-                    
-                    market_data.append({
-                        'symbol': symbol,
-                        'name': info.get('longName', 'N/A'),
-                        'price': current_price,
-                        'market_cap': info.get('marketCap', 0),
-                        'volume': info.get('volume', 0),
-                        'pe_ratio': info.get('trailingPE', 0),
-                        'beta': info.get('beta', 0)
-                    })
-                    
-                    time.sleep(0.05)  # 避免API限制
-                    
-                except Exception as e:
-                    logging.warning(f"獲取 {symbol} 市場數據失敗: {e}")
-                    continue
-            
-            return pd.DataFrame(market_data)
-            
-        except Exception as e:
-            logging.error(f"獲取市場數據失敗: {e}")
+        """獲取市場數據"""
+        if not INCLUDE_MARKET_DATA:
             return pd.DataFrame()
+        
+        market_data = []
+        
+        for symbol in symbols[:20]:  # 只獲取前20支股票的市場數據
+            try:
+                ticker = yf.Ticker(symbol)
+                info = ticker.info
+                
+                market_data.append({
+                    'symbol': symbol,
+                    'price': info.get('regularMarketPrice', 0),
+                    'change': info.get('regularMarketChange', 0),
+                    'change_percent': info.get('regularMarketChangePercent', 0),
+                    'volume': info.get('volume', 0),
+                    'market_cap': info.get('marketCap', 0)
+                })
+                
+                time.sleep(REQUEST_DELAY)
+                
+            except Exception as e:
+                logging.warning(f"獲取 {symbol} 市場數據失敗: {e}")
+                continue
+        
+        return pd.DataFrame(market_data)
     
     def get_top_options_volume(self, top_n: int = TOP_N) -> pd.DataFrame:
-        """獲取選擇權交易量前N大的股票"""
+        """獲取選擇權交易量前N名的股票"""
         symbols = self.get_stock_symbols()
         
-        logging.info(f"正在分析 {len(symbols)} 支股票的選擇權交易量...")
+        print(f"🔍 開始掃描 {len(symbols)} 支股票的選擇權交易量...")
         
-        results = []
+        options_data = []
+        
         for i, symbol in enumerate(symbols):
-            logging.info(f"進度: {i+1}/{len(symbols)} - 分析 {symbol}")
-            volume_data = self.get_options_volume(symbol)
-            results.append(volume_data)
-            
-            # 避免API限制
-            time.sleep(REQUEST_DELAY)
+            try:
+                data = self.get_options_volume(symbol)
+                options_data.append(data)
+                
+                # 顯示進度
+                if (i + 1) % 10 == 0:
+                    print(f"   已掃描 {i + 1}/{len(symbols)} 支股票...")
+                
+                time.sleep(REQUEST_DELAY)
+                
+            except Exception as e:
+                logging.error(f"處理 {symbol} 時發生錯誤: {e}")
+                continue
         
         # 轉換為DataFrame並排序
-        df = pd.DataFrame(results)
-        df = df[df['total_volume'] > 0]  # 過濾掉交易量為0的股票
-        df = df.sort_values('total_volume', ascending=False)
+        df = pd.DataFrame(options_data)
+        if not df.empty:
+            df = df.sort_values('total_volume', ascending=False).head(top_n)
         
-        return df.head(top_n)
+        return df
     
     def generate_report(self, top_options_df: pd.DataFrame, market_data_df: Optional[pd.DataFrame] = None) -> pd.DataFrame:
-        """生成報告"""
-        if PRINT_TO_CONSOLE:
-            print("\n" + "="*100)
-            print("選擇權交易量前50大美股報告")
-            print("="*100)
-            print(f"生成時間: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-            print("="*100)
+        """生成分析報告"""
+        if top_options_df.empty:
+            print("❌ 沒有找到選擇權數據")
+            return pd.DataFrame()
         
-        if market_data_df is not None and not market_data_df.empty:
-            # 合併選擇權數據和市場數據
-            merged_df = top_options_df.merge(market_data_df, on='symbol', how='left')
+        print(f"\n📊 選擇權交易量排行榜")
+        print("=" * 60)
+        print(f"生成時間: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print("=" * 60)
+        
+        # 合併市場數據
+        if not market_data_df.empty:
+            top_options_df = top_options_df.merge(
+                market_data_df[['symbol', 'price', 'change_percent']], 
+                on='symbol', 
+                how='left'
+            )
+        
+        # 顯示排行榜
+        for i, (_, row) in enumerate(top_options_df.iterrows(), 1):
+            print(f"\n {i:2d}. {row['symbol']}")
+            print(f"    總交易量: {row['total_volume']:,.0f}")
+            print(f"    看漲: {row['call_volume']:,.0f} | 看跌: {row['put_volume']:,.0f}")
+            print(f"    看跌/看漲比率: {row['put_call_ratio']:.2f}")
             
-            if PRINT_TO_CONSOLE:
-                for idx, row in merged_df.iterrows():
-                    print(f"{idx+1:2d}. {row['symbol']:6s} - {row.get('name', 'N/A')[:35]:35s}")
-                    print(f"    選擇權總交易量: {row['total_volume']:,}")
-                    print(f"    看漲選擇權: {row['call_volume']:,} | 看跌選擇權: {row['put_volume']:,}")
-                    print(f"    看跌/看漲比率: {row['put_call_ratio']:.2f}")
-                    if 'price' in row and pd.notna(row['price']):
-                        print(f"    當前價格: ${row['price']:.2f}")
-                    if 'market_cap' in row and pd.notna(row['market_cap']):
-                        print(f"    市值: ${row['market_cap']/1e9:.1f}B")
-                    print()
-        else:
-            merged_df = top_options_df
-            if PRINT_TO_CONSOLE:
-                for idx, row in merged_df.iterrows():
-                    print(f"{idx+1:2d}. {row['symbol']:6s}")
-                    print(f"    選擇權總交易量: {row['total_volume']:,}")
-                    print(f"    看漲選擇權: {row['call_volume']:,} | 看跌選擇權: {row['put_volume']:,}")
-                    print(f"    看跌/看漲比率: {row['put_call_ratio']:.2f}")
-                    if 'expiry' in row and row['expiry']:
-                        print(f"    到期日: {row['expiry']}")
-                    print()
+            if INCLUDE_EXPIRY_INFO and row['expiry']:
+                print(f"    到期日: {row['expiry']}")
+            
+            if not market_data_df.empty and 'price' in row and pd.notna(row['price']):
+                print(f"    當前價格: ${row['price']:.2f}")
+                if 'change_percent' in row and pd.notna(row['change_percent']):
+                    change_icon = "📈" if row['change_percent'] > 0 else "📉"
+                    print(f"    漲跌幅: {change_icon} {row['change_percent']:.2f}%")
         
-        return merged_df
+        return top_options_df
     
     def run_single_scan(self, update_watchlist: bool = True, max_watchlist_stocks: int = 50):
         """執行單次掃描"""
-        logging.info("開始執行選擇權交易量掃描...")
-        
-        # 獲取選擇權交易量前N大的股票
-        top_options = self.get_top_options_volume(TOP_N)
-        
-        if top_options.empty:
-            logging.warning("沒有找到選擇權交易量數據")
-            return
-        
-        # 獲取市場數據
-        symbols = top_options['symbol'].tolist()
-        market_data = self.get_market_data(symbols)
-        
-        # 生成報告
-        final_df = self.generate_report(top_options, market_data)
-        
-        # 更新監控清單
-        if update_watchlist:
-            top_symbols = final_df['symbol'].tolist()
-            success = self.update_watchlist(top_symbols, max_watchlist_stocks)
-            if success:
-                logging.info("監控清單更新成功")
+        try:
+            # 獲取選擇權交易量數據
+            print("🔍 開始掃描選擇權交易量...")
+            top_options_df = self.get_top_options_volume(TOP_N)
+            
+            if top_options_df.empty:
+                print("❌ 掃描失敗，沒有獲取到數據")
+                return False
+            
+            # 獲取市場數據（可選）
+            market_data_df = pd.DataFrame()
+            if INCLUDE_MARKET_DATA:
+                print("📊 正在獲取市場數據...")
+                market_data_df = self.get_market_data(top_options_df['symbol'].tolist())
+            
+            # 生成報告
+            print("📋 正在生成分析報告...")
+            self.generate_report(top_options_df, market_data_df)
+            
+            # 更新監控清單
+            if update_watchlist:
+                print("🔄 正在更新監控清單...")
+                top_symbols = top_options_df['symbol'].tolist()
+                success = self.update_watchlist(top_symbols, max_watchlist_stocks)
+                
+                if success:
+                    print(f"\n✅ 監控清單更新成功！")
+                    return True
+                else:
+                    print(f"\n❌ 監控清單更新失敗！")
+                    return False
             else:
-                logging.error("監控清單更新失敗")
-        
-        logging.info("掃描完成！")
-        return final_df
+                print(f"\n✅ 掃描完成，未更新監控清單")
+                return True
+                
+        except Exception as e:
+            logging.error(f"掃描過程中發生錯誤: {e}")
+            print(f"\n❌ 掃描失敗: {e}")
+            return False
 
 def main():
-    """主函數"""
+    print("🚀 啟動選擇權交易量追蹤器 v2.0")
+    print("=" * 50)
+    
     tracker = OptionsVolumeTrackerV2()
     
-    print("選擇權交易量追蹤器 v2.0")
-    print("="*50)
-    print("開始執行選擇權交易量掃描...")
+    # 執行單次掃描
+    success = tracker.run_single_scan(
+        update_watchlist=True,
+        max_watchlist_stocks=50
+    )
     
-    try:
-        result = tracker.run_single_scan(update_watchlist=True, max_watchlist_stocks=50)
-        if result is not None:
-            print(f"\n成功獲取 {len(result)} 支股票的選擇權數據")
-            print("✅ stock_watchlist.json 已自動更新")
-        else:
-            print("掃描完成，但沒有獲取到有效數據")
-    except Exception as e:
-        logging.error(f"程式執行錯誤: {e}")
-        print(f"程式執行失敗: {e}")
+    if success:
+        print("\n🎉 追蹤器執行完成！")
+    else:
+        print("\n💥 追蹤器執行失敗！")
+    
+    print("=" * 50)
 
 if __name__ == "__main__":
     main() 
