@@ -15,7 +15,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     python3-dev \
     curl \
+    tzdata \
     && rm -rf /var/lib/apt/lists/*
+
+# 設定系統時區為台灣時區
+ENV TZ=Asia/Taipei
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
 # 先複製 requirements.txt 以利用緩存層
 COPY requirements.txt ./
