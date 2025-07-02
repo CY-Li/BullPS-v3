@@ -1584,6 +1584,7 @@ def main():
     print("💾 正在儲存分析結果...")
     analyzer.save_csv(results)
     
+    analysis_result = {}
     # 新增：輸出 analysis_result.json 供前端使用
     if not results.empty:
         tz = pytz.timezone('Asia/Taipei')
@@ -1607,6 +1608,55 @@ def main():
         with open(backend_path, 'w', encoding='utf-8') as f:
             json.dump(analysis_result, f, indent=2, ensure_ascii=False)
         print(f"💾 分析結果已儲存至 backend/analysis_result.json")
+
+    # 新增：更新股票監控清單
+    print("\n🔄 開始更新股票監控清單...")
+    MONITORED_STOCKS_PATH = Path("backend/monitored_stocks.json")
+    
+    try:
+        with open(MONITORED_STOCKS_PATH, 'r', encoding='utf-8') as f:
+            monitored_stocks = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        monitored_stocks = []
+        
+    monitored_symbols = {stock['symbol'] for stock in monitored_stocks}
+    print(f"🔍 目前監控清單中有 {len(monitored_symbols)} 支股票。")
+
+    stocks_to_add = []
+    if analysis_result and 'result' in analysis_result:
+        for stock in analysis_result['result']:
+            composite_score = stock.get('composite_score')
+            confidence_score = stock.get('confidence_score')
+            symbol = stock.get('symbol')
+
+            if composite_score is None or confidence_score is None or symbol is None:
+                continue
+
+            if composite_score >= 90 and confidence_score >= 80:
+                if symbol not in monitored_symbols:
+                    print(f"⭐ 新增股票到監控清單: {symbol} (綜合評分: {composite_score:.2f}, 信心度: {confidence_score:.2f})")
+                    
+                    new_entry = {
+                        "symbol": symbol,
+                        "name": stock.get('name'),
+                        "market": stock.get('market'),
+                        "entry_date": datetime.now(pytz.timezone('Asia/Taipei')).strftime('%Y-%m-%d'),
+                        "entry_price": stock.get('current_price'),
+                        "entry_composite_score": composite_score,
+                        "entry_confidence_score": confidence_score,
+                        "entry_signal_conditions": stock.get('signal_conditions'),
+                        "long_signal_price_at_entry": stock.get('long_signal_price')
+                    }
+                    stocks_to_add.append(new_entry)
+                    monitored_symbols.add(symbol)
+
+    if stocks_to_add:
+        monitored_stocks.extend(stocks_to_add)
+        with open(MONITORED_STOCKS_PATH, 'w', encoding='utf-8') as f:
+            json.dump(monitored_stocks, f, indent=2, ensure_ascii=False)
+        print(f"💾 成功新增 {len(stocks_to_add)} 支股票到監控清單。檔案已更新: {MONITORED_STOCKS_PATH}")
+    else:
+        print("ℹ️  本次分析無新增符合條件的股票進入監控清單。")
     
     print("\n✅ 整合分析完成！")
 

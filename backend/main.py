@@ -24,9 +24,13 @@ logger = logging.getLogger(__name__)
 app = FastAPI()
 
 # 檔案路徑
-WATCHLIST_PATH = Path(__file__).parent.parent / "stock_watchlist.json"
-ANALYSIS_PATH = Path(__file__).parent.parent / "analysis_result.json"
-STATIC_DIR = Path(__file__).parent.parent / "frontend" / "dist"
+BASE_DIR = Path(__file__).parent.parent
+WATCHLIST_PATH = BASE_DIR / "stock_watchlist.json"
+ANALYSIS_PATH = BASE_DIR / "analysis_result.json"
+MONITORED_STOCKS_PATH = BASE_DIR / "backend" / "monitored_stocks.json"
+TRADE_HISTORY_PATH = BASE_DIR / "backend" / "trade_history.json"
+STATIC_DIR = BASE_DIR / "frontend" / "dist"
+
 
 # 全局狀態變數
 analysis_status = {
@@ -108,56 +112,23 @@ def run_tracker_and_analyze():
             "error": None
         })
         
+        # 調整工作目錄到專案根目錄
+        os.chdir(BASE_DIR)
+        
         # 階段1: 數據收集中
-        update_status("正在獲取股票列表...", 5, "數據收集中")
-        time.sleep(1)
-        
-        # 執行選擇權追蹤器
         update_status("正在掃描選擇權交易量...", 10, "數據收集中")
-        subprocess.run(["python", "options_volume_tracker_v2.py"], check=True)
+        subprocess.run(["python", "options_volume_tracker_v2.py"], check=True, cwd=BASE_DIR)
         
-        # 階段2: 排名篩選中
-        update_status("正在篩選活躍股票...", 20, "排名篩選中")
-        time.sleep(1)
+        # 階段2: 數據獲取與分析
+        update_status("正在分析股票...", 30, "數據分析中")
+        subprocess.run(["python", "integrated_stock_analyzer.py"], check=True, cwd=BASE_DIR)
         
-        # 階段3: 監控清單更新中
-        update_status("正在更新股票觀察池...", 30, "監控清單更新中")
-        time.sleep(1)
+        # 階段3: 投資組合管理
+        update_status("正在檢查持倉與更新交易紀錄...", 80, "投資組合管理中")
+        subprocess.run(["python", "backend/portfolio_manager.py"], check=True, cwd=BASE_DIR)
         
-        # 階段4: 數據獲取中
-        update_status("正在獲取股票歷史數據...", 40, "數據獲取中")
-        time.sleep(1)
-        
-        # 執行股票分析器
-        update_status("正在計算技術指標...", 50, "技術指標計算中")
-        subprocess.run(["python", "integrated_stock_analyzer.py"], check=True)
-        
-        # 階段5: 技術指標計算中
-        update_status("正在計算技術指標...", 60, "技術指標計算中")
-        time.sleep(1)
-        
-        # 階段6: 多頭訊號檢測中
-        update_status("正在檢測多頭訊號...", 70, "多頭訊號檢測中")
-        time.sleep(1)
-        
-        # 階段7: 趨勢反轉分析中
-        update_status("正在分析趨勢反轉...", 80, "趨勢反轉分析中")
-        time.sleep(1)
-        
-        # 階段8: 綜合評分中
-        update_status("正在計算綜合評分...", 85, "綜合評分中")
-        time.sleep(1)
-        
-        # 階段9: 信心度計算中
-        update_status("正在計算信心度...", 90, "信心度計算中")
-        time.sleep(1)
-        
-        # 階段10: 數據整合中
-        update_status("正在整合分析結果...", 95, "數據整合中")
-        time.sleep(1)
-        
-        # 階段11: 報告生成中
-        update_status("正在生成分析報告...", 100, "報告生成中")
+        # 階段4: 報告生成中
+        update_status("正在生成最終報告...", 95, "報告生成中")
         time.sleep(1)
         
         # 完成
@@ -165,22 +136,22 @@ def run_tracker_and_analyze():
             "is_running": False,
             "current_stage": "完成",
             "progress": 100,
-            "message": "分析完成",
+            "message": "分析與管理完成",
             "end_time": datetime.now(TZ_TAIPEI).isoformat()
         })
         
-        logger.info("Analysis completed successfully")
+        logger.info("Analysis and portfolio management completed successfully")
         
     except Exception as e:
         analysis_status.update({
             "is_running": False,
             "current_stage": "錯誤",
             "progress": 0,
-            "message": f"分析失敗: {str(e)}",
+            "message": f"執行失敗: {str(e)}",
             "end_time": datetime.now(TZ_TAIPEI).isoformat(),
             "error": str(e)
         })
-        logger.error(f"Error running analysis: {e}")
+        logger.error(f"Error during execution: {e}")
         raise
 
 scheduler = BackgroundScheduler(timezone=pytz.timezone('Asia/Taipei'))
@@ -250,6 +221,34 @@ def get_analysis():
             content={"error": "Failed to read analysis"}
         )
 
+@app.get("/api/monitored-stocks")
+def get_monitored_stocks():
+    try:
+        if MONITORED_STOCKS_PATH.exists():
+            data = json.loads(MONITORED_STOCKS_PATH.read_text(encoding='utf-8'))
+            return data
+        return []
+    except Exception as e:
+        logger.error(f"Error reading monitored stocks: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": "Failed to read monitored stocks"}
+        )
+
+@app.get("/api/trade-history")
+def get_trade_history():
+    try:
+        if TRADE_HISTORY_PATH.exists():
+            data = json.loads(TRADE_HISTORY_PATH.read_text(encoding='utf-8'))
+            return data
+        return []
+    except Exception as e:
+        logger.error(f"Error reading trade history: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": "Failed to read trade history"}
+        )
+
 @app.get("/api/stock-prices")
 def get_stock_prices():
     try:
@@ -306,4 +305,11 @@ async def spa_fallback(request: Request, call_next):
                 status_code=404,
                 content={"error": "Frontend not built"}
             )
-    return response 
+    return response
+
+if __name__ == "__main__":
+    try:
+        import uvicorn
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+    except ImportError:
+        logger.error("Uvicorn is not installed. Please run 'pip install uvicorn' to start the server.")

@@ -1,0 +1,41 @@
+[
+  {
+    "symbol": "FSLR",
+    "name": "First Solar, Inc.",
+    "market": "US",
+    "entry_date": "2025-07-02",
+    "entry_price": 162.9600067138672,
+    "entry_composite_score": 93.71268257148377,
+    "entry_confidence_score": 82.5,
+    "entry_signal_conditions": [
+      "OBV突破均線",
+      "均線多頭排列",
+      "動量加速",
+      "指標斜率向上",
+      "相對強度為正",
+      "上漲動能延續",
+      "趨勢反轉確認",
+      "反轉可信度高"
+    ],
+    "long_signal_price_at_entry": 158.79266560872395
+  },
+  {
+    "symbol": "STZ",
+    "name": "Constellation Brands, Inc.",
+    "market": "US",
+    "entry_date": "2025-07-02",
+    "entry_price": 166.4199981689453,
+    "entry_composite_score": 93.25157625591784,
+    "entry_confidence_score": 81.0,
+    "entry_signal_conditions": [
+      "MACD柱狀圖轉正+RSI未超買",
+      "RSI超賣反轉",
+      "指標斜率向上",
+      "上漲動能延續",
+      "反轉可信度高",
+      "短期動能轉折",
+      "價格結構反轉"
+    ],
+    "long_signal_price_at_entry": 161.32000732421875
+  }
+]
