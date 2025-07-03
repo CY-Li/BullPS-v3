@@ -1,3 +1,11 @@
+import sys
+from pathlib import Path
+
+# 將專案根目錄添加到 Python 路徑
+# 確保即使直接運行 main.py 也能找到 backend 模組
+BASE_DIR = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(BASE_DIR))
+
 from fastapi import FastAPI, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -120,8 +128,14 @@ def run_tracker_and_analyze():
         subprocess.run(["python", "options_volume_tracker_v2.py"], check=True, cwd=BASE_DIR)
         
         # 階段2: 數據獲取與分析
-        update_status("正在分析股票...", 30, "數據分析中")
+        update_status("正在分析股票...", 50, "數據分析中")
         subprocess.run(["python", "integrated_stock_analyzer.py"], check=True, cwd=BASE_DIR)
+        
+        # 階段2.5: 比對並更新監控中的股票分析快照
+        update_status("正在比對並更新監控股票分析快照...", 65, "數據比對中")
+        # 直接調用 portfolio_manager 中的函數，而不是作為獨立進程
+        from backend.portfolio_manager import compare_and_update_monitored_stocks
+        compare_and_update_monitored_stocks()
         
         # 階段3: 投資組合管理
         update_status("正在檢查持倉與更新交易紀錄...", 80, "投資組合管理中")

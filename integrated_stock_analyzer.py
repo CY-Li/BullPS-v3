@@ -1645,7 +1645,8 @@ def main():
                         "entry_composite_score": composite_score,
                         "entry_confidence_score": confidence_score,
                         "entry_signal_conditions": stock.get('signal_conditions'),
-                        "long_signal_price_at_entry": stock.get('long_signal_price')
+                        "long_signal_price_at_entry": stock.get('long_signal_price'),
+                        "quantity": 1 # 新增：預設數量為1
                     }
                     stocks_to_add.append(new_entry)
                     monitored_symbols.add(symbol)

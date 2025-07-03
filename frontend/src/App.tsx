@@ -609,20 +609,20 @@ const MonitoredStocksTab = ({ stocks }: { stocks: MonitoredStock[] }) => (
                 </TableRow>
             </TableHead>
             <TableBody>
-                {stocks.map((stock) => (
+                {(stocks ?? []).map((stock) => (
                     <TableRow key={stock.symbol} sx={{ '&:last-child td, &:last-child th': { border: 0 } }}>
                         <TableCell component="th" scope="row">
                             <Typography variant="subtitle2" fontWeight="bold">{stock.symbol}</Typography>
                             <Typography variant="caption" color="text.secondary">{stock.name}</Typography>
                         </TableCell>
                         <TableCell align="right">{stock.entry_date}</TableCell>
-                        <TableCell align="right">${stock.entry_price.toFixed(2)}</TableCell>
-                        <TableCell align="right">{stock.entry_composite_score.toFixed(1)}</TableCell>
-                        <TableCell align="right">{stock.entry_confidence_score.toFixed(1)}</TableCell>
-                        <TableCell align="right">${stock.long_signal_price_at_entry.toFixed(2)}</TableCell>
+                        <TableCell align="right">${stock.entry_price?.toFixed(2)}</TableCell>
+                        <TableCell align="right">{stock.entry_composite_score?.toFixed(1)}</TableCell>
+                        <TableCell align="right">{stock.entry_confidence_score?.toFixed(1)}</TableCell>
+                        <TableCell align="right">${stock.long_signal_price_at_entry?.toFixed(2)}</TableCell>
                         <TableCell>
-                            <Tooltip title={stock.entry_signal_conditions.join(', ')}>
-                                <Typography variant="caption">{stock.entry_signal_conditions.slice(0, 2).join(', ')}...</Typography>
+                            <Tooltip title={stock.entry_signal_conditions?.join(', ')}>
+                                <Typography variant="caption">{(stock.entry_signal_conditions || []).slice(0, 2).join(', ')}...</Typography>
                             </Tooltip>
                         </TableCell>
                     </TableRow>
@@ -648,26 +648,26 @@ const TradeHistoryTab = ({ trades }: { trades: TradeHistory[] }) => (
                 </TableRow>
             </TableHead>
             <TableBody>
-                {trades.map((trade, index) => (
+                {(trades ?? []).map((trade, index) => (
                     <TableRow key={`${trade.symbol}-${index}`} sx={{ '&:last-child td, &:last-child th': { border: 0 } }}>
                         <TableCell component="th" scope="row">
                             <Typography variant="subtitle2" fontWeight="bold">{trade.symbol}</Typography>
                             <Typography variant="caption" color="text.secondary">{trade.name}</Typography>
                         </TableCell>
                         <TableCell align="right">{trade.entry_date}</TableCell>
-                        <TableCell align="right">${trade.entry_price.toFixed(2)}</TableCell>
+                        <TableCell align="right">${trade.entry_price?.toFixed(2)}</TableCell>
                         <TableCell align="right">{trade.exit_date}</TableCell>
-                        <TableCell align="right">${trade.exit_price.toFixed(2)}</TableCell>
+                        <TableCell align="right">${trade.exit_price?.toFixed(2)}</TableCell>
                         <TableCell align="right">
                             <Chip 
-                                label={`${trade.profit_loss_percent.toFixed(2)}%`}
+                                label={`${trade.profit_loss_percent?.toFixed(2)}%`}
                                 color={trade.profit_loss_percent >= 0 ? "success" : "error"}
                                 size="small"
                             />
                         </TableCell>
                         <TableCell>
-                            <Tooltip title={trade.exit_reasons.join(' | ')}>
-                                <Typography variant="caption">{trade.exit_reasons[0]}</Typography>
+                            <Tooltip title={trade.exit_reasons?.join(' | ')}>
+                                <Typography variant="caption">{trade.exit_reasons?.[0]}</Typography>
                             </Tooltip>
                         </TableCell>
                     </TableRow>
