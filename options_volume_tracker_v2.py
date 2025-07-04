@@ -297,7 +297,7 @@ class OptionsVolumeTrackerV2:
         try:
             # 獲取選擇權交易量數據
             print("🔍 開始掃描選擇權交易量...")
-            #top_options_df = self.get_top_options_volume(TOP_N)
+            top_options_df = self.get_top_options_volume(TOP_N)
             
             if top_options_df.empty:
                 print("❌ 掃描失敗，沒有獲取到數據")
