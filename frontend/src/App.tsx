@@ -833,6 +833,7 @@ const ExitReasonModal = ({ trade, open, handleClose }: { trade: TradeHistory | n
                     borderRadius: { xs: 0, sm: 4 },
                     boxShadow: 24,
                     p: { xs: 2, sm: 3, md: 4 },
+                    pb: { xs: 8, sm: 3, md: 4 }, // Add bottom padding
                     display: 'flex',
                     flexDirection: 'column'
                 }}>
