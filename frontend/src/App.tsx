@@ -1,8 +1,8 @@
 import { useEffect, useState, useRef } from "react";
 import {
-  Container, Typography, Button, CircularProgress, Box, Chip, Alert, Card, CardContent, IconButton, LinearProgress, Tabs, Tab, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip, Modal, Fade, List, ListItem, ListItemIcon, ListItemText, CssBaseline
+  Container, Typography, Button, CircularProgress, Box, Chip, Alert, Card, CardContent, Accordion, AccordionDetails, IconButton, LinearProgress, Tabs, Tab, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip, Modal, Fade, List, ListItem, ListItemIcon, ListItemText, CssBaseline, useMediaQuery
 } from "@mui/material";
-import { createTheme, ThemeProvider } from "@mui/material/styles";
+import { createTheme, ThemeProvider, useTheme } from "@mui/material/styles";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import Brightness4Icon from '@mui/icons-material/Brightness4';
 import Brightness7Icon from '@mui/icons-material/Brightness7';
@@ -433,11 +433,11 @@ function App() {
         </IconButton>
       </Box>
       <Container maxWidth={false} sx={{ pt: { xs: 8, sm: 4 }, pb: 4, px: { xs: 2, sm: 4 }, width: '100%' }}>
-        <Typography variant="h4" gutterBottom fontWeight={700} sx={{ fontSize: { xs: '2rem', sm: '3.2rem' } }}>
+        <Typography variant="h4" gutterBottom fontWeight={700} sx={{ fontSize: { xs: '1.8rem', sm: '3.2rem' } }}>
           Bull Put Spread 選股神器
         </Typography>
         <Typography variant="subtitle1" gutterBottom>
-          每日自動獲取前50大美股選擇權交易量，並自動分析被低估且趨勢反轉向上的股票
+          每日自動獲取美股選擇權交易量前50名，並自動分析被低估且趨勢反轉向上的股票
         </Typography>
         
         {/* 狀態顯示區域 */}
@@ -555,19 +555,33 @@ function App() {
 }
 
 // 新元件：分析結果
-const AnalysisResultTab = ({ analysis, getRankColor, getRankIcon }: any) => (
-    <>
-        <Typography variant="h6" sx={{ fontWeight: 'bold', fontSize: { xs: '1.5rem', sm: '1.75rem' } }}>分析結果摘要</Typography>
-        {analysis ? (
-            <Box>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 2, fontSize: '14px' }}>
-                    分析時間: {analysis.analysis_date || analysis.timestamp} | 
-                    分析股票數: {analysis.analyzed_stocks}/{analysis.total_stocks}
-                </Typography>
-                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: '1fr 1fr 1fr', lg: '1fr 1fr 1fr 1fr' }, gap: 2 }}>
+const AnalysisResultTab = ({ analysis, getRankColor, getRankIcon }: any) => {
+    const [expanded, setExpanded] = useState<string | false>(false);
+    const theme = useTheme();
+    const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+
+    return (
+        <>
+            {/* <Typography variant="h6" sx={{ fontWeight: 'bold', fontSize: { xs: '1.5rem', sm: '1.75rem' } }}>分析結果摘要</Typography> */}
+            {analysis ? (
+                <Box>
+                    {/* <Typography variant="body2" color="text.secondary" sx={{ mb: 2, fontSize: '14px' }}>
+                        分析時間: {analysis.analysis_date || analysis.timestamp} | 
+                        分析股票數: {analysis.analyzed_stocks}/{analysis.total_stocks}
+                    </Typography> */}
+                    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: '1fr 1fr 1fr', lg: '1fr 1fr 1fr 1fr' }, gap: 2 }}>
                         {analysis.result?.filter((stock: any) => stock.status !== '無多頭訊號').map((stock: any, index: number) => (
-                            <Card key={stock.symbol} elevation={2} sx={{ transition: 'all 0.3s', '&:hover': { transform: 'translateY(-2px)', boxShadow: 6 } }}>
-                                <CardContent sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 1 }}>
+                            <Card
+                                    key={stock.symbol}
+                                    elevation={2}
+                                    sx={{
+                                        transition: 'all 0.3s',
+                                        '&:hover': { transform: 'translateY(-2px)', boxShadow: 6 },
+                                        ...(isMobile && { cursor: 'pointer' }) // Add cursor pointer for mobile
+                                    }}
+                                    onClick={isMobile ? () => setExpanded(expanded === `panel${index}` ? false : `panel${index}`) : undefined} // Make card clickable for mobile
+                                >
+                                <CardContent sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 1, bgcolor: 'transparent' }}>
                                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
                                         <Box sx={{ width: 36, height: 36, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: getRankColor(index + 1), color: index < 3 ? 'black' : 'white', fontWeight: 'bold', fontSize: '1.2rem' }}>
                                             {getRankIcon(index + 1)}
@@ -588,51 +602,107 @@ const AnalysisResultTab = ({ analysis, getRankColor, getRankIcon }: any) => (
                                             <Typography component="span" fontWeight="bold">信心度:</Typography> {stock.confidence_score !== undefined ? Math.round(stock.confidence_score) : 'N/A'}/100 ({stock.confidence_level})
                                         </Typography>
                                     </Box>
-                                    <Box sx={{ mt: 1 }}>
-                                        <Typography variant="body2" sx={{ fontWeight: 'bold', color: 'text.secondary' }}>詳細資訊</Typography>
-                                        <Box sx={{ p: 0, display: 'flex', flexDirection: 'column', gap: 0.8 }}>
-                                            <Typography variant="subtitle2" sx={{ mt: 1, fontWeight: 'bold' }}>價格資訊</Typography>
-                                            <Typography variant="caption">當前價格: ${stock.current_price?.toFixed(2)}</Typography>
-                                            <Typography variant="caption">抄底價位: ${stock.long_signal_price?.toFixed(2)}</Typography>
-                                            <Typography variant="caption">距離信號: {stock.distance_to_signal?.toFixed(2)}%</Typography>
-                                            <Typography variant="caption">信號後漲幅 {stock.price_change_since_signal?.toFixed(2)}%</Typography>
-                                            <Typography variant="subtitle2" sx={{ mt: 1, fontWeight: 'bold' }}>技術指標</Typography>
-                                            <Typography variant="caption">RSI: {stock.rsi?.toFixed(1)}</Typography>
-                                            <Typography variant="caption">MACD: {stock.macd?.toFixed(3)}</Typography>
-                                            <Typography variant="caption">成交量比率: {stock.volume_ratio?.toFixed(2)}</Typography>
-                                            <Typography variant="caption">信號信心度: {stock.long_signal_confidence?.toFixed(0)}</Typography>
-                                            <Typography variant="subtitle2" sx={{ mt: 1, fontWeight: 'bold' }}>趨勢分析</Typography>
-                                            <Typography variant="caption">反轉確認: {stock.trend_reversal_confirmation?.toFixed(0)}%</Typography>
-                                            <Typography variant="caption">反轉強度: {stock.reversal_strength?.toFixed(0)}%</Typography>
-                                            <Typography variant="caption">反轉可信度: {stock.reversal_reliability?.toFixed(0)}%</Typography>
-                                            <Typography variant="caption">短期動能: {stock.short_term_momentum_turn?.toFixed(0)}%</Typography>
-                                            <Typography variant="caption">價格結構: {stock.price_structure_reversal?.toFixed(0)}%</Typography>
-                                            <Typography variant="subtitle2" sx={{ mt: 1, fontWeight: 'bold' }}>信號條件</Typography>
-                                            {stock.signal_conditions?.slice(0, 5).map((cond: string, i: number) => (
-                                                <Typography variant="caption" key={i}>• {cond}</Typography>
-                                            ))}
-                                            {stock.signal_conditions && stock.signal_conditions.length > 5 && (
-                                                <Typography variant="caption">+{stock.signal_conditions.length - 5} 更多條件</Typography>
-                                            )}
-                                            <Typography variant="subtitle2" sx={{ mt: 1, fontWeight: 'bold' }}>信心因素</Typography>
-                                            {stock.confidence_factors?.slice(0, 5).map((factor: string, i: number) => (
-                                                <Typography variant="caption" key={i}>• {factor}</Typography>
-                                            ))}
-                                            {stock.confidence_factors && stock.confidence_factors.length > 5 && (
-                                                <Typography variant="caption">+{stock.confidence_factors.length - 5} 更多因素</Typography>
-                                            )}
-                                            <Typography variant="caption" sx={{ mt: 1 }}><b>信號日期:</b> {stock.latest_signal_date}</Typography>
-                                            <Typography variant="caption"><b>分析日期:</b> {stock.current_date}</Typography>
+                                    {isMobile ? (
+                                        <Accordion
+                                            expanded={expanded === `panel${index}`}
+                                            elevation={0}
+                                            sx={{
+                                                boxShadow: 'none',
+                                                '&:before': { display: 'none' },
+                                                mt: 1,
+                                                bgcolor: 'transparent'
+                                            }}
+                                        >
+                                            {/* Removed AccordionSummary */}
+                                            {/* Custom header for mobile */}
+                                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1, mb: 1 }}>
+                                                {/* <Typography variant="body2" sx={{ fontWeight: 'bold', color: 'text.secondary' }}>
+                                                    詳細資訊 {expanded === `panel${index}` ? '▲' : '▼'}
+                                                </Typography> */}
+                                            </Box>
+                                            <AccordionDetails sx={{ p: 0, display: 'flex', flexDirection: 'column', gap: 0.8, bgcolor: 'transparent' }}>
+                                                <Typography variant="subtitle2" sx={{ mt: 1, fontWeight: 'bold', fontSize: '1rem' }}>價格資訊</Typography>
+                                                <Typography variant="caption" sx={{ fontSize: '1rem' }}>當前價格: ${stock.current_price?.toFixed(2)}</Typography>
+                                                <Typography variant="caption" sx={{ fontSize: '1rem' }}>抄底價位: ${stock.long_signal_price?.toFixed(2)}</Typography>
+                                                <Typography variant="caption" sx={{ fontSize: '1rem' }}>距離信號: {stock.distance_to_signal?.toFixed(2)}%</Typography>
+                                                <Typography variant="caption" sx={{ fontSize: '1rem' }}>信號後漲幅 {stock.price_change_since_signal?.toFixed(2)}%</Typography>
+                                                <Typography variant="subtitle2" sx={{ mt: 1, fontWeight: 'bold', fontSize: '1rem' }}>技術指標</Typography>
+                                                <Typography variant="caption" sx={{ fontSize: '1rem' }}>RSI: {stock.rsi?.toFixed(1)}</Typography>
+                                                <Typography variant="caption" sx={{ fontSize: '1rem' }}>MACD: {stock.macd?.toFixed(3)}</Typography>
+                                                <Typography variant="caption" sx={{ fontSize: '1rem' }}>成交量比率: {stock.volume_ratio?.toFixed(2)}</Typography>
+                                                <Typography variant="caption" sx={{ fontSize: '1rem' }}>信號信心度: {stock.long_signal_confidence?.toFixed(0)}</Typography>
+                                                <Typography variant="subtitle2" sx={{ mt: 1, fontWeight: 'bold', fontSize: '1rem' }}>趨勢分析</Typography>
+                                                <Typography variant="caption" sx={{ fontSize: '1rem' }}>反轉確認: {stock.trend_reversal_confirmation?.toFixed(0)}%</Typography>
+                                                <Typography variant="caption" sx={{ fontSize: '1rem' }}>反轉強度: {stock.reversal_strength?.toFixed(0)}%</Typography>
+                                                <Typography variant="caption" sx={{ fontSize: '1rem' }}>反轉可信度: {stock.reversal_reliability?.toFixed(0)}%</Typography>
+                                                <Typography variant="caption" sx={{ fontSize: '1rem' }}>短期動能: {stock.short_term_momentum_turn?.toFixed(0)}%</Typography>
+                                                <Typography variant="caption" sx={{ fontSize: '1rem' }}>價格結構: {stock.price_structure_reversal?.toFixed(0)}%</Typography>
+                                                <Typography variant="subtitle2" sx={{ mt: 1, fontWeight: 'bold', fontSize: '1rem' }}>信號條件</Typography>
+                                                {stock.signal_conditions?.slice(0, 5).map((cond: string, i: number) => (
+                                                    <Typography variant="caption" key={i} sx={{ fontSize: '1rem' }}>• {cond}</Typography>
+                                                ))}
+                                                {stock.signal_conditions && stock.signal_conditions.length > 5 && (
+                                                    <Typography variant="caption" sx={{ fontSize: '1rem' }}>+{stock.signal_conditions.length - 5} 更多條件</Typography>
+                                                )}
+                                                <Typography variant="subtitle2" sx={{ mt: 1, fontWeight: 'bold', fontSize: '1rem' }}>信心因素</Typography>
+                                                {stock.confidence_factors?.slice(0, 5).map((factor: string, i: number) => (
+                                                    <Typography variant="caption" key={i} sx={{ fontSize: '1rem' }}>• {factor}</Typography>
+                                                ))}
+                                                {stock.confidence_factors && stock.confidence_factors.length > 5 && (
+                                                    <Typography variant="caption" sx={{ fontSize: '1rem' }}>+{stock.confidence_factors.length - 5} 更多因素</Typography>
+                                                )}
+                                                <Typography variant="caption" sx={{ mt: 1, fontSize: '1rem' }}><b>信號日期:</b> {stock.latest_signal_date}</Typography>
+                                                <Typography variant="caption" sx={{ fontSize: '1rem' }}><b>分析日期:</b> {stock.current_date}</Typography>
+                                            </AccordionDetails>
+                                        </Accordion>
+                                    ) : (
+                                        <Box sx={{ mt: 1 }}>
+                                            {/* <Typography variant="body2" sx={{ fontWeight: 'bold', color: 'text.secondary' }}>詳細資訊</Typography> */}
+                                            <Box sx={{ p: 0, display: 'flex', flexDirection: 'column', gap: 0.8, bgcolor: 'transparent' }}>
+                                                <Typography variant="subtitle2" sx={{ mt: 1, fontWeight: 'bold', fontSize: '1rem' }}>價格資訊</Typography>
+                                                <Typography variant="caption" sx={{ fontSize: '1rem' }}>當前價格: ${stock.current_price?.toFixed(2)}</Typography>
+                                                <Typography variant="caption" sx={{ fontSize: '1rem' }}>抄底價位: ${stock.long_signal_price?.toFixed(2)}</Typography>
+                                                <Typography variant="caption" sx={{ fontSize: '1rem' }}>距離信號: {stock.distance_to_signal?.toFixed(2)}%</Typography>
+                                                <Typography variant="caption" sx={{ fontSize: '1rem' }}>信號後漲幅 {stock.price_change_since_signal?.toFixed(2)}%</Typography>
+                                                <Typography variant="subtitle2" sx={{ mt: 1, fontWeight: 'bold', fontSize: '1rem' }}>技術指標</Typography>
+                                                <Typography variant="caption" sx={{ fontSize: '1rem' }}>RSI: {stock.rsi?.toFixed(1)}</Typography>
+                                                <Typography variant="caption" sx={{ fontSize: '1rem' }}>MACD: {stock.macd?.toFixed(3)}</Typography>
+                                                <Typography variant="caption" sx={{ fontSize: '1rem' }}>成交量比率: {stock.volume_ratio?.toFixed(2)}</Typography>
+                                                <Typography variant="caption" sx={{ fontSize: '1rem' }}>信號信心度: {stock.long_signal_confidence?.toFixed(0)}</Typography>
+                                                <Typography variant="subtitle2" sx={{ mt: 1, fontWeight: 'bold', fontSize: '1rem' }}>趨勢分析</Typography>
+                                                <Typography variant="caption" sx={{ fontSize: '1rem' }}>反轉確認: {stock.trend_reversal_confirmation?.toFixed(0)}%</Typography>
+                                                <Typography variant="caption" sx={{ fontSize: '1rem' }}>反轉強度: {stock.reversal_strength?.toFixed(0)}%</Typography>
+                                                <Typography variant="caption" sx={{ fontSize: '1rem' }}>反轉可信度: {stock.reversal_reliability?.toFixed(0)}%</Typography>
+                                                <Typography variant="caption" sx={{ fontSize: '1rem' }}>短期動能: {stock.short_term_momentum_turn?.toFixed(0)}%</Typography>
+                                                <Typography variant="caption" sx={{ fontSize: '1rem' }}>價格結構: {stock.price_structure_reversal?.toFixed(0)}%</Typography>
+                                                <Typography variant="subtitle2" sx={{ mt: 1, fontWeight: 'bold', fontSize: '1rem' }}>信號條件</Typography>
+                                                {stock.signal_conditions?.slice(0, 5).map((cond: string, i: number) => (
+                                                    <Typography variant="caption" key={i} sx={{ fontSize: '1rem' }}>• {cond}</Typography>
+                                                ))}
+                                                {stock.signal_conditions && stock.signal_conditions.length > 5 && (
+                                                    <Typography variant="caption" sx={{ fontSize: '1rem' }}>+{stock.signal_conditions.length - 5} 更多條件</Typography>
+                                                )}
+                                                <Typography variant="subtitle2" sx={{ mt: 1, fontWeight: 'bold', fontSize: '1rem' }}>信心因素</Typography>
+                                                {stock.confidence_factors?.slice(0, 5).map((factor: string, i: number) => (
+                                                    <Typography variant="caption" key={i} sx={{ fontSize: '1rem' }}>• {factor}</Typography>
+                                                ))}
+                                                {stock.confidence_factors && stock.confidence_factors.length > 5 && (
+                                                    <Typography variant="caption" sx={{ fontSize: '1rem' }}>+{stock.confidence_factors.length - 5} 更多因素</Typography>
+                                                )}
+                                                <Typography variant="caption" sx={{ mt: 1, fontSize: '1rem' }}><b>信號日期:</b> {stock.latest_signal_date}</Typography>
+                                                <Typography variant="caption" sx={{ fontSize: '1rem' }}><b>分析日期:</b> {stock.current_date}</Typography>
+                                            </Box>
                                         </Box>
-                                    </Box>
+                                    )}
                                 </CardContent>
                             </Card>
                         ))}
                     </Box>
                 </Box>
             ) : <Alert severity="info">尚無分析結果，請點擊「立即更新」開始分析</Alert>}
-    </>
-);
+        </>
+    );
+};
 
 // 新元件：股票監控清單
 const MonitoredStocksTab = ({ stocks }: { stocks: MonitoredStock[] }) => (
@@ -641,12 +711,12 @@ const MonitoredStocksTab = ({ stocks }: { stocks: MonitoredStock[] }) => (
             <Table sx={{ minWidth: 650 }} aria-label="monitored stocks table">
                 <TableHead>
                     <TableRow>
-                        <TableCell sx={{ whiteSpace: 'nowrap' }}>股票代號</TableCell>
-                        <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>進場日期</TableCell>
-                        <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>進場價格</TableCell>
-                        <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>進場評分</TableCell>
-                        <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>進場信心度</TableCell>
-                        <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>抄底價位</TableCell>
+                        <TableCell sx={{ whiteSpace: 'nowrap', minWidth: '200px' }}>股票代號</TableCell>
+                        <TableCell align="left" sx={{ whiteSpace: 'nowrap' }}>進場日期</TableCell>
+                        <TableCell align="left" sx={{ whiteSpace: 'nowrap' }}>進場價格</TableCell>
+                        <TableCell align="left" sx={{ whiteSpace: 'nowrap' }}>進場評分</TableCell>
+                        <TableCell align="left" sx={{ whiteSpace: 'nowrap' }}>進場信心度</TableCell>
+                        <TableCell align="left" sx={{ whiteSpace: 'nowrap' }}>抄底價位</TableCell>
                         <TableCell sx={{ whiteSpace: 'nowrap' }}>進場條件</TableCell>
                     </TableRow>
                 </TableHead>
@@ -654,17 +724,17 @@ const MonitoredStocksTab = ({ stocks }: { stocks: MonitoredStock[] }) => (
                     {(stocks ?? []).map((stock) => (
                         <TableRow key={stock.symbol} sx={{ '&:last-child td, &:last-child th': { border: 0 } }}>
                             <TableCell component="th" scope="row">
-                                <Typography variant="subtitle2" fontWeight="bold">{stock.symbol}</Typography>
-                                <Typography variant="caption" color="text.secondary">{stock.name}</Typography>
+                                <Typography variant="subtitle2" fontWeight="bold" sx={{ fontSize: '1rem' }}>{stock.symbol}</Typography>
+                                <Typography variant="caption" color="text.secondary" sx={{ fontSize: '1rem' }}>{stock.name}</Typography>
                             </TableCell>
-                            <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>{stock.entry_date}</TableCell>
-                            <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>${stock.entry_price?.toFixed(2)}</TableCell>
-                            <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>{stock.entry_composite_score?.toFixed(1)}</TableCell>
-                            <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>{stock.entry_confidence_score?.toFixed(1)}</TableCell>
-                            <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>${stock.long_signal_price_at_entry?.toFixed(2)}</TableCell>
+                            <TableCell align="left" sx={{ whiteSpace: 'nowrap', fontSize: '1rem' }}>{stock.entry_date}</TableCell>
+                            <TableCell align="left" sx={{ whiteSpace: 'nowrap', fontSize: '1rem' }}>${stock.entry_price?.toFixed(2)}</TableCell>
+                            <TableCell align="left" sx={{ whiteSpace: 'nowrap', fontSize: '1rem' }}>{stock.entry_composite_score?.toFixed(1)}</TableCell>
+                            <TableCell align="left" sx={{ whiteSpace: 'nowrap', fontSize: '1rem' }}>{stock.entry_confidence_score?.toFixed(1)}</TableCell>
+                            <TableCell align="left" sx={{ whiteSpace: 'nowrap', fontSize: '1rem' }}>${stock.long_signal_price_at_entry?.toFixed(2)}</TableCell>
                             <TableCell sx={{ whiteSpace: 'nowrap' }}>
                                 <Tooltip title={stock.entry_signal_conditions?.join(', ')}>
-                                    <Typography variant="caption">{(stock.entry_signal_conditions || []).slice(0, 2).join(', ')}...</Typography>
+                                    <Typography variant="caption" sx={{ fontSize: '1rem' }}>{(stock.entry_signal_conditions || []).slice(0, 2).join(', ')}...</Typography>
                                 </Tooltip>
                             </TableCell>
                         </TableRow>
@@ -697,12 +767,12 @@ const TradeHistoryTab = ({ trades }: { trades: TradeHistory[] }) => {
                 <Table sx={{ minWidth: 650 }} aria-label="trade history table">
                     <TableHead>
                         <TableRow>
-                            <TableCell sx={{ whiteSpace: 'nowrap' }}>股票代號</TableCell>
-                            <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>進場日期</TableCell>
-                            <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>進場價格</TableCell>
-                            <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>出場日期</TableCell>
-                            <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>出場價格</TableCell>
-                            <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>損益</TableCell>
+                            <TableCell sx={{ whiteSpace: 'nowrap', minWidth: '200px' }}>股票代號</TableCell>
+                            <TableCell align="left" sx={{ whiteSpace: 'nowrap' }}>進場日期</TableCell>
+                            <TableCell align="left" sx={{ whiteSpace: 'nowrap' }}>進場價格</TableCell>
+                            <TableCell align="left" sx={{ whiteSpace: 'nowrap' }}>出場日期</TableCell>
+                            <TableCell align="left" sx={{ whiteSpace: 'nowrap' }}>出場價格</TableCell>
+                            <TableCell align="left" sx={{ whiteSpace: 'nowrap' }}>損益</TableCell>
                             <TableCell sx={{ whiteSpace: 'nowrap' }}>出場原因</TableCell>
                         </TableRow>
                     </TableHead>
@@ -710,14 +780,14 @@ const TradeHistoryTab = ({ trades }: { trades: TradeHistory[] }) => {
                         {(trades ?? []).map((trade, index) => (
                             <TableRow key={`${trade.symbol}-${index}`} sx={{ '&:last-child td, &:last-child th': { border: 0 } }}>
                                 <TableCell component="th" scope="row">
-                                    <Typography variant="subtitle2" fontWeight="bold">{trade.symbol}</Typography>
-                                    <Typography variant="caption" color="text.secondary">{trade.name}</Typography>
+                                    <Typography variant="subtitle2" fontWeight="bold" sx={{ fontSize: '1rem' }}>{trade.symbol}</Typography>
+                                    <Typography variant="caption" color="text.secondary" sx={{ fontSize: '1rem' }}>{trade.name}</Typography>
                                 </TableCell>
-                                <TableCell align="right">{new Date(trade.entry_date).toLocaleDateString()}</TableCell>
-                                <TableCell align="right">${trade.entry_price?.toFixed(2)}</TableCell>
-                                <TableCell align="right">{new Date(trade.exit_date).toLocaleDateString()}</TableCell>
-                                <TableCell align="right">${trade.exit_price?.toFixed(2)}</TableCell>
-                                <TableCell align="right">
+                                <TableCell align="left" sx={{ fontSize: '1rem' }}>{new Date(trade.entry_date).toLocaleDateString()}</TableCell>
+                                <TableCell align="left" sx={{ fontSize: '1rem' }}>${trade.entry_price?.toFixed(2)}</TableCell>
+                                <TableCell align="left" sx={{ fontSize: '1rem' }}>{new Date(trade.exit_date).toLocaleDateString()}</TableCell>
+                                <TableCell align="left" sx={{ fontSize: '1rem' }}>${trade.exit_price?.toFixed(2)}</TableCell>
+                                <TableCell align="left">
                                     <Chip 
                                         label={`${trade.profit_loss_percent?.toFixed(2)}%`}
                                         color={trade.profit_loss_percent >= 0 ? "success" : "error"}
@@ -751,14 +821,15 @@ const ExitReasonModal = ({ trade, open, handleClose }: { trade: TradeHistory | n
             <Fade in={open}>
                 <Box sx={{
                     position: 'absolute',
-                    top: '50%',
-                    left: '50%',
-                    transform: 'translate(-50%, -50%)',
-                    width: { xs: '90%', sm: 500 },
-                    maxWidth: '95vw',
-                    maxHeight: '90vh',
+                    top: { xs: 0, sm: '50%' },
+                    left: { xs: 0, sm: '50%' },
+                    transform: { xs: 'none', sm: 'translate(-50%, -50%)' },
+                    width: { xs: '100vw', sm: 500 },
+                    height: { xs: '100vh', sm: 'auto' },
+                    maxWidth: { xs: '100vw', sm: '95vw' },
+                    maxHeight: { xs: '100vh', sm: '90vh' },
                     bgcolor: 'background.paper',
-                    borderRadius: 4,
+                    borderRadius: { xs: 0, sm: 4 },
                     boxShadow: 24,
                     p: { xs: 2, sm: 3, md: 4 },
                     display: 'flex',
@@ -777,7 +848,7 @@ const ExitReasonModal = ({ trade, open, handleClose }: { trade: TradeHistory | n
                                     </ListItemIcon>
                                     <ListItemText 
                                         primary={reason}
-                                        primaryTypographyProps={{ variant: 'body1' }}
+                                        primaryTypographyProps={{ variant: 'body1', sx: { fontSize: '1rem' } }}
                                     />
                                 </ListItem>
                             ))}
@@ -795,7 +866,7 @@ const ExitReasonModal = ({ trade, open, handleClose }: { trade: TradeHistory | n
 // 新元件：原始觀察池
 const WatchlistTab = ({ watchlist, formatPrice, getRankColor, getRankIcon }: any) => (
     <>
-        <Typography variant="h6" sx={{ fontWeight: 'bold' }}>今日選擇權交易量前50大股票</Typography>
+        {/* <Typography variant="h6" sx={{ fontWeight: 'bold' }}>今日選擇權交易量前50大股票</Typography> */}
         {watchlist?.stocks ? (
             <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, 1fr)', md: 'repeat(4, 1fr)', lg: 'repeat(5, 1fr)', xl: 'repeat(6, 1fr)' }, gap: 2 }}>
                 {watchlist.stocks.map((symbol: string, index: number) => (
