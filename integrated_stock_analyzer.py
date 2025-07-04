@@ -1403,6 +1403,18 @@ class IntegratedStockAnalyzer:
             'price_structure_reversal': latest_signal.get('price_structure_reversal', 0)
         }
     
+    def analyze_specific_stocks(self, symbols):
+        results = []
+        print(f"📊 開始對指定的 {len(symbols)} 支股票進行單獨分析...")
+        for i, symbol in enumerate(symbols):
+            print(f"   正在分析 {symbol} ({i+1}/{len(self.stocks)})...")
+            result = self.analyze_stock(symbol)
+            if result:
+                results.append(result)
+            time.sleep(1)
+        print("✅ 指定股票分析完成")
+        return results
+    
     def analyze_watchlist(self):
         results = []
         
@@ -1570,6 +1582,16 @@ class IntegratedStockAnalyzer:
             df.to_csv(filename, index=False, encoding='utf-8-sig')
             print(f"💾 分析結果已儲存至 {filename}")
 
+class NpEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.integer):
+            return int(obj)
+        if isinstance(obj, np.floating):
+            return float(obj)
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return super(NpEncoder, self).default(obj)
+
 def main():
     print("🚀 啟動整合股票分析系統...")
     
@@ -1599,14 +1621,14 @@ def main():
         
         # 在根目錄創建
         with open('analysis_result.json', 'w', encoding='utf-8') as f:
-            json.dump(analysis_result, f, indent=2, ensure_ascii=False)
+            json.dump(analysis_result, f, indent=2, ensure_ascii=False, cls=NpEncoder)
         print(f"💾 分析結果已儲存至 analysis_result.json")
         
         # 在 backend 目錄也創建一份
         backend_path = Path("backend/analysis_result.json")
         backend_path.parent.mkdir(exist_ok=True)
         with open(backend_path, 'w', encoding='utf-8') as f:
-            json.dump(analysis_result, f, indent=2, ensure_ascii=False)
+            json.dump(analysis_result, f, indent=2, ensure_ascii=False, cls=NpEncoder)
         print(f"💾 分析結果已儲存至 backend/analysis_result.json")
 
     # 新增：更新股票監控清單

@@ -1,12 +1,13 @@
 import { useEffect, useState, useRef } from "react";
 import {
-  Container, Typography, Button, CircularProgress, Box, Chip, Alert, Card, CardContent, Accordion, AccordionSummary, AccordionDetails, IconButton, LinearProgress, Tabs, Tab, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip
+  Container, Typography, Button, CircularProgress, Box, Chip, Alert, Card, CardContent, Accordion, AccordionSummary, AccordionDetails, IconButton, LinearProgress, Tabs, Tab, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip, Modal, Fade, List, ListItem, ListItemIcon, ListItemText
 } from "@mui/material";
 import { createTheme, ThemeProvider } from "@mui/material/styles";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import Brightness4Icon from '@mui/icons-material/Brightness4';
 import Brightness7Icon from '@mui/icons-material/Brightness7';
+import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import axios from "axios";
 import { blue, green, orange, red } from "@mui/material/colors";
 
@@ -633,49 +634,119 @@ const MonitoredStocksTab = ({ stocks }: { stocks: MonitoredStock[] }) => (
 );
 
 // 新元件：歷史交易紀錄
-const TradeHistoryTab = ({ trades }: { trades: TradeHistory[] }) => (
-    <TableContainer component={Paper} elevation={2}>
-        <Table sx={{ minWidth: 650 }} aria-label="trade history table">
-            <TableHead>
-                <TableRow>
-                    <TableCell>股票代號</TableCell>
-                    <TableCell align="right">進場日期</TableCell>
-                    <TableCell align="right">進場價格</TableCell>
-                    <TableCell align="right">出場日期</TableCell>
-                    <TableCell align="right">出場價格</TableCell>
-                    <TableCell align="right">損益</TableCell>
-                    <TableCell>出場原因</TableCell>
-                </TableRow>
-            </TableHead>
-            <TableBody>
-                {(trades ?? []).map((trade, index) => (
-                    <TableRow key={`${trade.symbol}-${index}`} sx={{ '&:last-child td, &:last-child th': { border: 0 } }}>
-                        <TableCell component="th" scope="row">
-                            <Typography variant="subtitle2" fontWeight="bold">{trade.symbol}</Typography>
-                            <Typography variant="caption" color="text.secondary">{trade.name}</Typography>
-                        </TableCell>
-                        <TableCell align="right">{trade.entry_date}</TableCell>
-                        <TableCell align="right">${trade.entry_price?.toFixed(2)}</TableCell>
-                        <TableCell align="right">{trade.exit_date}</TableCell>
-                        <TableCell align="right">${trade.exit_price?.toFixed(2)}</TableCell>
-                        <TableCell align="right">
-                            <Chip 
-                                label={`${trade.profit_loss_percent?.toFixed(2)}%`}
-                                color={trade.profit_loss_percent >= 0 ? "success" : "error"}
-                                size="small"
-                            />
-                        </TableCell>
-                        <TableCell>
-                            <Tooltip title={trade.exit_reasons?.join(' | ')}>
-                                <Typography variant="caption">{trade.exit_reasons?.[0]}</Typography>
-                            </Tooltip>
-                        </TableCell>
-                    </TableRow>
-                ))}
-            </TableBody>
-        </Table>
-    </TableContainer>
-);
+const TradeHistoryTab = ({ trades }: { trades: TradeHistory[] }) => {
+    const [openModal, setOpenModal] = useState(false);
+    const [selectedTrade, setSelectedTrade] = useState<TradeHistory | null>(null);
+
+    const handleOpenModal = (trade: TradeHistory) => {
+        setSelectedTrade(trade);
+        setOpenModal(true);
+    };
+
+    const handleCloseModal = () => {
+        setOpenModal(false);
+        setSelectedTrade(null);
+    };
+
+    return (
+        <>
+            <TableContainer component={Paper} elevation={2}>
+                <Table sx={{ minWidth: 650 }} aria-label="trade history table">
+                    <TableHead>
+                        <TableRow>
+                            <TableCell>股票代號</TableCell>
+                            <TableCell align="right">進場日期</TableCell>
+                            <TableCell align="right">進場價格</TableCell>
+                            <TableCell align="right">出場日期</TableCell>
+                            <TableCell align="right">出場價格</TableCell>
+                            <TableCell align="right">損益</TableCell>
+                            <TableCell>出場原因</TableCell>
+                        </TableRow>
+                    </TableHead>
+                    <TableBody>
+                        {(trades ?? []).map((trade, index) => (
+                            <TableRow key={`${trade.symbol}-${index}`} sx={{ '&:last-child td, &:last-child th': { border: 0 } }}>
+                                <TableCell component="th" scope="row">
+                                    <Typography variant="subtitle2" fontWeight="bold">{trade.symbol}</Typography>
+                                    <Typography variant="caption" color="text.secondary">{trade.name}</Typography>
+                                </TableCell>
+                                <TableCell align="right">{new Date(trade.entry_date).toLocaleDateString()}</TableCell>
+                                <TableCell align="right">${trade.entry_price?.toFixed(2)}</TableCell>
+                                <TableCell align="right">{new Date(trade.exit_date).toLocaleDateString()}</TableCell>
+                                <TableCell align="right">${trade.exit_price?.toFixed(2)}</TableCell>
+                                <TableCell align="right">
+                                    <Chip 
+                                        label={`${trade.profit_loss_percent?.toFixed(2)}%`}
+                                        color={trade.profit_loss_percent >= 0 ? "success" : "error"}
+                                        size="small"
+                                    />
+                                </TableCell>
+                                <TableCell>
+                                    <Button size="small" onClick={() => handleOpenModal(trade)}>查看原因</Button>
+                                </TableCell>
+                            </TableRow>
+                        ))}
+                    </TableBody>
+                </Table>
+            </TableContainer>
+            <ExitReasonModal trade={selectedTrade} open={openModal} handleClose={handleCloseModal} />
+        </>
+    );
+};
+
+// 新元件：出場原因彈出視窗
+const ExitReasonModal = ({ trade, open, handleClose }: { trade: TradeHistory | null, open: boolean, handleClose: () => void }) => {
+    if (!trade) return null;
+
+    return (
+        <Modal
+            open={open}
+            onClose={handleClose}
+            closeAfterTransition
+        >
+            <Fade in={open}>
+                <Box sx={{
+                    position: 'absolute',
+                    top: '50%',
+                    left: '50%',
+                    transform: 'translate(-50%, -50%)',
+                    width: { xs: '90%', sm: 500 },
+                    maxWidth: '95vw',
+                    maxHeight: '90vh',
+                    bgcolor: 'background.paper',
+                    borderRadius: 4,
+                    boxShadow: 24,
+                    p: { xs: 2, sm: 3, md: 4 },
+                    display: 'flex',
+                    flexDirection: 'column'
+                }}>
+                    <Typography variant="h5" component="h2" fontWeight="bold" sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>
+                        <InfoOutlinedIcon color="primary" />
+                        {trade.symbol} - 出場原因
+                    </Typography>
+                    <Box sx={{ overflowY: 'auto', flex: 1, my: 2 }}>
+                        <List dense>
+                            {trade.exit_reasons?.map((reason, index) => (
+                                <ListItem key={index} sx={{ alignItems: 'flex-start' }}>
+                                    <ListItemIcon sx={{ minWidth: 32, mt: 0.5 }}>
+                                        <Chip label={`#${index + 1}`} size="small" />
+                                    </ListItemIcon>
+                                    <ListItemText 
+                                        primary={reason}
+                                        primaryTypographyProps={{ variant: 'body1' }}
+                                    />
+                                </ListItem>
+                            ))}
+                        </List>
+                    </Box>
+                    <Box sx={{ mt: 'auto', textAlign: 'right', flexShrink: 0 }}>
+                        <Button onClick={handleClose} variant="outlined">關閉</Button>
+                    </Box>
+                </Box>
+            </Fade>
+        </Modal>
+    );
+};
 
 // 新元件：原始觀察池
 const WatchlistTab = ({ watchlist, formatPrice, getRankColor, getRankIcon }: any) => (

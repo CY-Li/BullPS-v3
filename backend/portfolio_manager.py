@@ -1,6 +1,15 @@
 import json
 import os
+import sys
 from datetime import datetime
+import numpy as np
+
+# 將專案根目錄添加到 sys.path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from integrated_stock_analyzer import IntegratedStockAnalyzer
+
+# --- 常數定義 --- 
 
 # --- 常數定義 ---
 PORTFOLIO_FILE = os.path.join(os.path.dirname(__file__), 'monitored_stocks.json')
@@ -50,6 +59,16 @@ def load_json_file(file_path):
 
 def save_json_file(data, file_path):
     """通用 JSON 檔案儲存函式"""
+    class NpEncoder(json.JSONEncoder):
+        def default(self, obj):
+            if isinstance(obj, np.integer):
+                return int(obj)
+            if isinstance(obj, np.floating):
+                return float(obj)
+            if isinstance(obj, np.ndarray):
+                return obj.tolist()
+            return super(NpEncoder, self).default(obj)
+
     try:
         # 處理 NaN 值，將其轉換為 None
         def clean_nan_values(obj):
@@ -64,7 +83,7 @@ def save_json_file(data, file_path):
         
         cleaned_data = clean_nan_values(data)
         with open(file_path, 'w', encoding='utf-8') as f:
-            json.dump(cleaned_data, f, indent=2, ensure_ascii=False)
+            json.dump(cleaned_data, f, indent=2, ensure_ascii=False, cls=NpEncoder)
     except IOError as e:
         print(f"儲存至 {file_path} 時發生錯誤: {e}")
 
@@ -176,13 +195,13 @@ def evaluate_exit_confidence(trade, latest_analysis):
     base_exit_score = (erosion_score * 0.5) + (min(penalty_score, 1.0) * 0.5)
 
     # 引入更多出場相關指標的影響
-    # 這些指標從 current_snapshot 中獲取
-    current_rsi = current_snapshot.get('rsi', 50)
-    current_macd = current_snapshot.get('macd', 0)
-    current_macd_hist = current_snapshot.get('macd_histogram', 0) # 假設有這個字段
-    current_volume_ratio = current_snapshot.get('volume_ratio', 1)
-    current_ma20 = current_snapshot.get('ma20', current_price)
-    current_ma5 = current_snapshot.get('ma5', current_price)
+    # 這些指標從 current_snapshot 中獲取，增加對 None 值的處理
+    current_rsi = current_snapshot.get('rsi') or 50
+    current_macd = current_snapshot.get('macd') or 0
+    current_macd_hist = current_snapshot.get('macd_histogram') or 0
+    current_volume_ratio = current_snapshot.get('volume_ratio') or 1
+    current_ma20 = current_snapshot.get('ma20') or current_price
+    current_ma5 = current_snapshot.get('ma5') or current_price
 
     # RSI惡化
     if current_rsi > 70: # 超買區
@@ -205,9 +224,9 @@ def evaluate_exit_confidence(trade, latest_analysis):
         base_exit_score += 0.15
 
     # 趨勢反轉指標惡化 (從 integrated_stock_analyzer.py 獲取)
-    trend_reversal_confirmation = current_snapshot.get('trend_reversal_confirmation', 0)
-    reversal_strength = current_snapshot.get('reversal_strength', 0)
-    reversal_reliability = current_snapshot.get('reversal_reliability', 0)
+    trend_reversal_confirmation = current_snapshot.get('trend_reversal_confirmation') or 0
+    reversal_strength = current_snapshot.get('reversal_strength') or 0
+    reversal_reliability = current_snapshot.get('reversal_reliability') or 0
 
     if trend_reversal_confirmation < 40: # 趨勢反轉確認度低
         base_exit_score += 0.1
@@ -217,7 +236,7 @@ def evaluate_exit_confidence(trade, latest_analysis):
         base_exit_score += 0.1
 
     # 風險報酬比惡化 (從 integrated_stock_analyzer.py 獲取)
-    risk_reward_ratio = current_snapshot.get('risk_reward_ratio', 1.0)
+    risk_reward_ratio = current_snapshot.get('risk_reward_ratio') or 1.0
     if risk_reward_ratio < 1.0: # 風險報酬比小於1
         base_exit_score += 0.2
 
@@ -338,14 +357,21 @@ def compare_and_update_monitored_stocks():
                 latest_analysis = stock_analysis
                 break
         
+        if not latest_analysis:
+            # 如果找不到最新分析，觸發對該股票的單獨分析
+            latest_analysis = re_analyze_missing_stock(symbol)
+
         if latest_analysis:
             trade['current_analysis_snapshot'] = latest_analysis
             # TODO: 在這裡可以加入更詳細的差異比對邏輯，並記錄差異
             # 例如：比較 confidence_factors, 各項評分等
             
             # 簡單的差異標記
-            initial_factors = set(trade.get('initial_analysis_snapshot', {}).get('confidence_factors', []))
-            current_factors = set(latest_analysis.get('confidence_factors', []))
+            initial_factors_raw = trade.get('initial_analysis_snapshot', {}).get('confidence_factors', [])
+            initial_factors = set(initial_factors_raw) if isinstance(initial_factors_raw, list) else set()
+            
+            current_factors_raw = latest_analysis.get('confidence_factors', [])
+            current_factors = set(current_factors_raw) if isinstance(current_factors_raw, list) else set()
             
             disappeared_factors = list(initial_factors - current_factors)
             new_factors = list(current_factors - initial_factors)
@@ -365,6 +391,47 @@ def compare_and_update_monitored_stocks():
     save_json_file(updated_monitored_stocks, PORTFOLIO_FILE)
     print("已完成監控股票的分析數據比對與更新。")
 
+def re_analyze_missing_stock(symbol):
+    """
+    對指定的股票執行單獨分析，並將結果更新回 analysis_result.json
+    """
+    print(f"🔍 監控中的股票 {symbol} 缺少最新分析，啟動單獨分析...")
+    
+    # 初始化分析器
+    # 注意：這裡假設 integrated_stock_analyzer.py 在上一層目錄
+    analyzer_path = os.path.join(os.path.dirname(__file__), '..', 'stock_watchlist.json')
+    analyzer = IntegratedStockAnalyzer(watchlist_file=analyzer_path)
+    
+    # 執行單獨分析
+    analysis_result = analyzer.analyze_stock(symbol)
+    
+    if not analysis_result:
+        print(f"❌ 對 {symbol} 的單獨分析失敗，無法獲取數據。")
+        return None
+
+    # 讀取現有的 analysis_result.json
+    analysis_data = load_json_file(ANALYSIS_RESULT_FILE)
+    if not analysis_data or 'result' not in analysis_data:
+        analysis_data = {'result': []}
+
+    # 檢查是否已存在該股票的分析，如果存在則更新，否則新增
+    updated = False
+    for i, stock_analysis in enumerate(analysis_data['result']):
+        if stock_analysis.get('symbol') == symbol:
+            analysis_data['result'][i] = analysis_result
+            updated = True
+            break
+    
+    if not updated:
+        analysis_data['result'].append(analysis_result)
+        
+    # 儲存更新後的 analysis_result.json
+    save_json_file(analysis_data, ANALYSIS_RESULT_FILE)
+    print(f"✅ 已將 {symbol} 的最新分析結果更新至 analysis_result.json")
+    
+    return analysis_result
+
+
 def check_monitored_stocks_for_exit():
     """
     主函式：遍歷所有監控中的持倉，評估並執行出場。
@@ -382,6 +449,10 @@ def check_monitored_stocks_for_exit():
             continue
 
         latest_analysis = get_latest_analysis(symbol)
+        if not latest_analysis:
+            # 如果找不到最新分析，觸發對該股票的單獨分析
+            latest_analysis = re_analyze_missing_stock(symbol)
+
         if not latest_analysis:
             print(f"\n警告: 找不到 {symbol} 的最新分析數據，跳過評估。")
             continue
