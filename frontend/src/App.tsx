@@ -1,10 +1,9 @@
 import { useEffect, useState, useRef } from "react";
 import {
-  Container, Typography, Button, CircularProgress, Box, Chip, Alert, Card, CardContent, Accordion, AccordionSummary, AccordionDetails, IconButton, LinearProgress, Tabs, Tab, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip, Modal, Fade, List, ListItem, ListItemIcon, ListItemText
+  Container, Typography, Button, CircularProgress, Box, Chip, Alert, Card, CardContent, IconButton, LinearProgress, Tabs, Tab, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip, Modal, Fade, List, ListItem, ListItemIcon, ListItemText, CssBaseline
 } from "@mui/material";
 import { createTheme, ThemeProvider } from "@mui/material/styles";
 import RefreshIcon from "@mui/icons-material/Refresh";
-import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import Brightness4Icon from '@mui/icons-material/Brightness4';
 import Brightness7Icon from '@mui/icons-material/Brightness7';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
@@ -94,10 +93,60 @@ function App() {
 
   const theme = createTheme({
     palette: {
-      primary: { main: blue[700] },
       mode: themeMode,
+      ...(themeMode === 'light'
+        ? {
+            // 淺色模式的調色盤
+            primary: { main: '#1976d2' }, // 經典藍色
+            secondary: { main: '#dc004e' }, // 亮麗的粉紅色
+            background: {
+              default: '#f4f6f8', // 非常淺的灰色背景
+              paper: '#ffffff',   // 卡片、選單等為純白色
+            },
+            text: {
+              primary: '#333333',
+              secondary: '#555555',
+            },
+          }
+        : {
+            // 深色模式的調色盤
+            primary: { main: '#90caf9' }, // 淺藍色，在深色背景上更突出
+            secondary: { main: '#f48fb1' }, // 柔和的粉紅色
+            background: {
+              default: '#121212', // 標準的深色背景
+              paper: '#1e1e1e',   // 卡片、選單等為深灰色
+            },
+            text: {
+              primary: '#e0e0e0',
+              secondary: '#bdbdbd',
+            },
+          }),
     },
     shape: { borderRadius: 12 },
+    typography: {
+      fontFamily: '"Inter", "Roboto", "Helvetica", "Arial", sans-serif',
+      h4: {
+        fontWeight: 700,
+      },
+      h5: {
+        fontWeight: 600,
+      },
+      h6: {
+        fontWeight: 600,
+      },
+    },
+    components: {
+      MuiCard: {
+        styleOverrides: {
+          root: {
+            transition: 'transform 0.3s ease-in-out, box-shadow 0.3s ease-in-out',
+            '&:hover': {
+              transform: 'translateY(-4px)',
+            },
+          },
+        },
+      },
+    },
   });
 
   // 獲取分析狀態
@@ -376,14 +425,15 @@ function App() {
 
   return (
     <ThemeProvider theme={theme}>
+      <CssBaseline />
       {/* 黑暗模式切換按鈕，建議放在右上角 */}
       <Box sx={{ position: 'absolute', top: 16, right: 24, zIndex: 10 }}>
         <IconButton onClick={() => setThemeMode(themeMode === 'light' ? 'dark' : 'light')} color="inherit">
           {themeMode === 'dark' ? <Brightness7Icon /> : <Brightness4Icon />}
         </IconButton>
       </Box>
-      <Container maxWidth={false} sx={{ py: 4, px: 0, width: '100%' }}>
-        <Typography variant="h4" gutterBottom fontWeight={700}>
+      <Container maxWidth={false} sx={{ pt: { xs: 8, sm: 4 }, pb: 4, px: { xs: 2, sm: 4 }, width: '100%' }}>
+        <Typography variant="h4" gutterBottom fontWeight={700} sx={{ fontSize: { xs: '2rem', sm: '3.2rem' } }}>
           Bull Put Spread 選股神器
         </Typography>
         <Typography variant="subtitle1" gutterBottom>
@@ -483,7 +533,7 @@ function App() {
 
         {/* 新增：頁籤導覽 */}
         <Box sx={{ borderBottom: 1, borderColor: 'divider', my: 3 }}>
-            <Tabs value={currentTab} onChange={handleTabChange} aria-label="analysis tabs">
+            <Tabs value={currentTab} onChange={handleTabChange} aria-label="analysis tabs" variant="scrollable" scrollButtons="auto">
                 <Tab label="分析結果摘要" />
                 <Tab label={`股票監控清單 (${monitoredStocks.length})`} />
                 <Tab label={`歷史交易紀錄 (${tradeHistory.length})`} />
@@ -506,22 +556,15 @@ function App() {
 
 // 新元件：分析結果
 const AnalysisResultTab = ({ analysis, getRankColor, getRankIcon }: any) => (
-    <Accordion 
-        defaultExpanded
-        elevation={0}
-        sx={{ backgroundColor: 'transparent !important', '&:before': { display: 'none' } }}
-    >
-        <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ p: 0, minHeight: 'auto' }}>
-            <Typography variant="h6" sx={{ fontWeight: 'bold' }}>分析結果摘要</Typography>
-        </AccordionSummary>
-        <AccordionDetails sx={{ p: 0 }}>
-            {analysis ? (
-                <Box>
-                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2, fontSize: '14px' }}>
-                        分析時間: {analysis.analysis_date || analysis.timestamp} | 
-                        分析股票數: {analysis.analyzed_stocks}/{analysis.total_stocks}
-                    </Typography>
-                    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: '1fr 1fr 1fr', lg: '1fr 1fr 1fr 1fr' }, gap: 2 }}>
+    <>
+        <Typography variant="h6" sx={{ fontWeight: 'bold', fontSize: { xs: '1.5rem', sm: '1.75rem' } }}>分析結果摘要</Typography>
+        {analysis ? (
+            <Box>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2, fontSize: '14px' }}>
+                    分析時間: {analysis.analysis_date || analysis.timestamp} | 
+                    分析股票數: {analysis.analyzed_stocks}/{analysis.total_stocks}
+                </Typography>
+                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: '1fr 1fr 1fr', lg: '1fr 1fr 1fr 1fr' }, gap: 2 }}>
                         {analysis.result?.filter((stock: any) => stock.status !== '無多頭訊號').map((stock: any, index: number) => (
                             <Card key={stock.symbol} elevation={2} sx={{ transition: 'all 0.3s', '&:hover': { transform: 'translateY(-2px)', boxShadow: 6 } }}>
                                 <CardContent sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 1 }}>
@@ -545,11 +588,9 @@ const AnalysisResultTab = ({ analysis, getRankColor, getRankIcon }: any) => (
                                             <Typography component="span" fontWeight="bold">信心度:</Typography> {stock.confidence_score !== undefined ? Math.round(stock.confidence_score) : 'N/A'}/100 ({stock.confidence_level})
                                         </Typography>
                                     </Box>
-                                    <Accordion defaultExpanded sx={{ boxShadow: 'none', '&:before': { display: 'none' }, mt: 1 }}>
-                                        <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ p: 0, minHeight: 'auto', '&.Mui-expanded': { minHeight: 'auto' } }}>
-                                            <Typography variant="body2" sx={{ fontWeight: 'bold', color: 'text.secondary' }}>詳細資訊</Typography>
-                                        </AccordionSummary>
-                                        <AccordionDetails sx={{ p: 0, display: 'flex', flexDirection: 'column', gap: 0.8 }}>
+                                    <Box sx={{ mt: 1 }}>
+                                        <Typography variant="body2" sx={{ fontWeight: 'bold', color: 'text.secondary' }}>詳細資訊</Typography>
+                                        <Box sx={{ p: 0, display: 'flex', flexDirection: 'column', gap: 0.8 }}>
                                             <Typography variant="subtitle2" sx={{ mt: 1, fontWeight: 'bold' }}>價格資訊</Typography>
                                             <Typography variant="caption">當前價格: ${stock.current_price?.toFixed(2)}</Typography>
                                             <Typography variant="caption">抄底價位: ${stock.long_signal_price?.toFixed(2)}</Typography>
@@ -582,55 +623,56 @@ const AnalysisResultTab = ({ analysis, getRankColor, getRankIcon }: any) => (
                                             )}
                                             <Typography variant="caption" sx={{ mt: 1 }}><b>信號日期:</b> {stock.latest_signal_date}</Typography>
                                             <Typography variant="caption"><b>分析日期:</b> {stock.current_date}</Typography>
-                                        </AccordionDetails>
-                                    </Accordion>
+                                        </Box>
+                                    </Box>
                                 </CardContent>
                             </Card>
                         ))}
                     </Box>
                 </Box>
             ) : <Alert severity="info">尚無分析結果，請點擊「立即更新」開始分析</Alert>}
-        </AccordionDetails>
-    </Accordion>
+    </>
 );
 
 // 新元件：股票監控清單
 const MonitoredStocksTab = ({ stocks }: { stocks: MonitoredStock[] }) => (
-    <TableContainer component={Paper} elevation={2}>
-        <Table sx={{ minWidth: 650 }} aria-label="monitored stocks table">
-            <TableHead>
-                <TableRow>
-                    <TableCell>股票代號</TableCell>
-                    <TableCell align="right">進場日期</TableCell>
-                    <TableCell align="right">進場價格</TableCell>
-                    <TableCell align="right">進場評分</TableCell>
-                    <TableCell align="right">進場信心度</TableCell>
-                    <TableCell align="right">抄底價位</TableCell>
-                    <TableCell>進場條件</TableCell>
-                </TableRow>
-            </TableHead>
-            <TableBody>
-                {(stocks ?? []).map((stock) => (
-                    <TableRow key={stock.symbol} sx={{ '&:last-child td, &:last-child th': { border: 0 } }}>
-                        <TableCell component="th" scope="row">
-                            <Typography variant="subtitle2" fontWeight="bold">{stock.symbol}</Typography>
-                            <Typography variant="caption" color="text.secondary">{stock.name}</Typography>
-                        </TableCell>
-                        <TableCell align="right">{stock.entry_date}</TableCell>
-                        <TableCell align="right">${stock.entry_price?.toFixed(2)}</TableCell>
-                        <TableCell align="right">{stock.entry_composite_score?.toFixed(1)}</TableCell>
-                        <TableCell align="right">{stock.entry_confidence_score?.toFixed(1)}</TableCell>
-                        <TableCell align="right">${stock.long_signal_price_at_entry?.toFixed(2)}</TableCell>
-                        <TableCell>
-                            <Tooltip title={stock.entry_signal_conditions?.join(', ')}>
-                                <Typography variant="caption">{(stock.entry_signal_conditions || []).slice(0, 2).join(', ')}...</Typography>
-                            </Tooltip>
-                        </TableCell>
+    <Box sx={{ overflowX: 'auto' }}>
+        <TableContainer component={Paper} elevation={2}>
+            <Table sx={{ minWidth: 650 }} aria-label="monitored stocks table">
+                <TableHead>
+                    <TableRow>
+                        <TableCell sx={{ whiteSpace: 'nowrap' }}>股票代號</TableCell>
+                        <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>進場日期</TableCell>
+                        <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>進場價格</TableCell>
+                        <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>進場評分</TableCell>
+                        <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>進場信心度</TableCell>
+                        <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>抄底價位</TableCell>
+                        <TableCell sx={{ whiteSpace: 'nowrap' }}>進場條件</TableCell>
                     </TableRow>
-                ))}
-            </TableBody>
-        </Table>
-    </TableContainer>
+                </TableHead>
+                <TableBody>
+                    {(stocks ?? []).map((stock) => (
+                        <TableRow key={stock.symbol} sx={{ '&:last-child td, &:last-child th': { border: 0 } }}>
+                            <TableCell component="th" scope="row">
+                                <Typography variant="subtitle2" fontWeight="bold">{stock.symbol}</Typography>
+                                <Typography variant="caption" color="text.secondary">{stock.name}</Typography>
+                            </TableCell>
+                            <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>{stock.entry_date}</TableCell>
+                            <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>${stock.entry_price?.toFixed(2)}</TableCell>
+                            <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>{stock.entry_composite_score?.toFixed(1)}</TableCell>
+                            <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>{stock.entry_confidence_score?.toFixed(1)}</TableCell>
+                            <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>${stock.long_signal_price_at_entry?.toFixed(2)}</TableCell>
+                            <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                                <Tooltip title={stock.entry_signal_conditions?.join(', ')}>
+                                    <Typography variant="caption">{(stock.entry_signal_conditions || []).slice(0, 2).join(', ')}...</Typography>
+                                </Tooltip>
+                            </TableCell>
+                        </TableRow>
+                    ))}
+                </TableBody>
+            </Table>
+        </TableContainer>
+    </Box>
 );
 
 // 新元件：歷史交易紀錄
@@ -650,17 +692,18 @@ const TradeHistoryTab = ({ trades }: { trades: TradeHistory[] }) => {
 
     return (
         <>
-            <TableContainer component={Paper} elevation={2}>
+            <Box sx={{ overflowX: 'auto' }}>
+                <TableContainer component={Paper} elevation={2}>
                 <Table sx={{ minWidth: 650 }} aria-label="trade history table">
                     <TableHead>
                         <TableRow>
-                            <TableCell>股票代號</TableCell>
-                            <TableCell align="right">進場日期</TableCell>
-                            <TableCell align="right">進場價格</TableCell>
-                            <TableCell align="right">出場日期</TableCell>
-                            <TableCell align="right">出場價格</TableCell>
-                            <TableCell align="right">損益</TableCell>
-                            <TableCell>出場原因</TableCell>
+                            <TableCell sx={{ whiteSpace: 'nowrap' }}>股票代號</TableCell>
+                            <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>進場日期</TableCell>
+                            <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>進場價格</TableCell>
+                            <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>出場日期</TableCell>
+                            <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>出場價格</TableCell>
+                            <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>損益</TableCell>
+                            <TableCell sx={{ whiteSpace: 'nowrap' }}>出場原因</TableCell>
                         </TableRow>
                     </TableHead>
                     <TableBody>
@@ -689,6 +732,7 @@ const TradeHistoryTab = ({ trades }: { trades: TradeHistory[] }) => {
                     </TableBody>
                 </Table>
             </TableContainer>
+            </Box>
             <ExitReasonModal trade={selectedTrade} open={openModal} handleClose={handleCloseModal} />
         </>
     );
@@ -750,36 +794,28 @@ const ExitReasonModal = ({ trade, open, handleClose }: { trade: TradeHistory | n
 
 // 新元件：原始觀察池
 const WatchlistTab = ({ watchlist, formatPrice, getRankColor, getRankIcon }: any) => (
-    <Accordion 
-        elevation={0}
-        defaultExpanded
-        sx={{ backgroundColor: 'transparent !important', '&:before': { display: 'none' } }}
-    >
-        <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ p: 0, minHeight: 'auto' }}>
-            <Typography variant="h6" sx={{ fontWeight: 'bold' }}>今日選擇權交易量前50大股票</Typography>
-        </AccordionSummary>
-        <AccordionDetails sx={{ p: 0 }}>
-            {watchlist?.stocks ? (
-                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(2, 1fr)', sm: 'repeat(3, 1fr)', md: 'repeat(4, 1fr)', lg: 'repeat(5, 1fr)', xl: 'repeat(6, 1fr)' }, gap: 2 }}>
-                    {watchlist.stocks.map((symbol: string, index: number) => (
-                        <Card key={symbol} elevation={2} sx={{ height: '100%', transition: 'all 0.3s', '&:hover': { transform: 'translateY(-2px)', boxShadow: 6 } }}>
-                            <CardContent sx={{ p: 2, textAlign: 'center' }}>
-                                <Box sx={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 40, height: 40, borderRadius: '50%', bgcolor: getRankColor(index + 1), color: index < 3 ? 'black' : 'white', fontWeight: 'bold', mb: 1 }}>
-                                    {getRankIcon(index + 1)}
-                                </Box>
-                                <Typography variant="h6" component="div" sx={{ fontWeight: 'bold', color: 'primary.main', mb: 1, fontSize: '1rem' }}>
-                                    {symbol}
-                                </Typography>
-                                <Typography variant="body2" color="text.secondary">
-                                    {formatPrice(symbol)}
-                                </Typography>
-                            </CardContent>
-                        </Card>
-                    ))}
-                </Box>
-            ) : <Alert severity="info">尚無股票數據，請點擊「立即更新」開始分析</Alert>}
-        </AccordionDetails>
-    </Accordion>
+    <>
+        <Typography variant="h6" sx={{ fontWeight: 'bold' }}>今日選擇權交易量前50大股票</Typography>
+        {watchlist?.stocks ? (
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, 1fr)', md: 'repeat(4, 1fr)', lg: 'repeat(5, 1fr)', xl: 'repeat(6, 1fr)' }, gap: 2 }}>
+                {watchlist.stocks.map((symbol: string, index: number) => (
+                    <Card key={symbol} elevation={2} sx={{ height: '100%', transition: 'all 0.3s', '&:hover': { transform: 'translateY(-2px)', boxShadow: 6 } }}>
+                        <CardContent sx={{ p: 2, textAlign: 'center' }}>
+                            <Box sx={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 40, height: 40, borderRadius: '50%', bgcolor: getRankColor(index + 1), color: index < 3 ? 'black' : 'white', fontWeight: 'bold', mb: 1 }}>
+                                {getRankIcon(index + 1)}
+                            </Box>
+                            <Typography variant="h6" component="div" sx={{ fontWeight: 'bold', color: 'primary.main', mb: 1, fontSize: '1rem' }}>
+                                {symbol}
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary">
+                                {formatPrice(symbol)}
+                            </Typography>
+                        </CardContent>
+                    </Card>
+                ))}
+            </Box>
+        ) : <Alert severity="info">尚無股票數據，請點擊「立即更新」開始分析</Alert>}
+    </>
 );
 
 export default App;
