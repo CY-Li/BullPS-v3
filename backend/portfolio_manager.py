@@ -488,7 +488,7 @@ def check_monitored_stocks_for_exit():
             current_price = latest_analysis.get('current_price')
             if current_price:
                 print(f"決策: 強烈建議清倉！(信心度 {report['exit_confidence']:.2f} >= 0.8)。以當前價格 {current_price:.2f} 賣出。")
-                remove_from_monitoring(symbol, current_price, ["強烈建議清倉", f"出場信心度達到 {report['exit_confidence'] * 100:.0f}%"] + [f"不再滿足的進場條件：{r}" for r in report['details']['disappeared_reasons']] + report['details']['triggered_penalties'])
+                remove_from_monitoring(symbol, current_price, ["強烈建議清倉", f"出場信心度達到 {report['exit_confidence'] * 100:.0f}%"] + [f"進場條件消失：{r}" for r in report['details']['disappeared_reasons']] + report['details']['triggered_penalties'])
             else:
                 print(f"錯誤: {symbol} 的最新分析中沒有 'current_price'，無法自動執行清倉。")
         elif report['exit_confidence'] >= 0.6: # 建議減倉
