@@ -7,6 +7,7 @@ import RefreshIcon from "@mui/icons-material/Refresh";
 import Brightness4Icon from '@mui/icons-material/Brightness4';
 import Brightness7Icon from '@mui/icons-material/Brightness7';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
+import CloseIcon from '@mui/icons-material/Close'; // Import CloseIcon
 import axios from "axios";
 import { blue, green, orange, red } from "@mui/material/colors";
 
@@ -839,6 +840,18 @@ const ExitReasonModal = ({ trade, open, handleClose }: { trade: TradeHistory | n
                         <InfoOutlinedIcon color="primary" />
                         {trade.symbol} - 出場原因
                     </Typography>
+                    <IconButton
+                        aria-label="close"
+                        onClick={handleClose}
+                        sx={{
+                            position: 'absolute',
+                            right: 16,
+                            top: 16,
+                            color: (theme) => theme.palette.grey[500],
+                        }}
+                    >
+                        <CloseIcon />
+                    </IconButton>
                     <Box sx={{ overflowY: 'auto', flex: 1, my: 2 }}>
                         <List dense>
                             {trade.exit_reasons?.map((reason, index) => (
@@ -854,9 +867,7 @@ const ExitReasonModal = ({ trade, open, handleClose }: { trade: TradeHistory | n
                             ))}
                         </List>
                     </Box>
-                    <Box sx={{ mt: 'auto', textAlign: 'right', flexShrink: 0 }}>
-                        <Button onClick={handleClose} variant="outlined">關閉</Button>
-                    </Box>
+                    
                 </Box>
             </Fade>
         </Modal>
