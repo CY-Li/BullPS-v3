@@ -151,9 +151,6 @@ class IntegratedStockAnalyzer:
         # 支撐位可靠性
         df['Support_Reliability'] = self.calculate_support_reliability(df)
         
-        # 風險報酬比
-        df['Risk_Reward_Ratio'] = self.calculate_risk_reward_ratio(df)
-        
         # ===== 新增：短期趨勢反轉識別指標 =====
         
         # 趨勢反轉確認指標
@@ -423,33 +420,6 @@ class IntegratedStockAnalyzer:
             reliability_score = support_count * 25
             
             return pd.Series([reliability_score] * len(df), index=df.index)
-        except:
-            return pd.Series(0, index=df.index)
-    
-    def calculate_risk_reward_ratio(self, df):
-        """計算風險報酬比"""
-        try:
-            current_price = df['Close'].iloc[-1]
-            
-            # 目標價位（基於布林通道上軌）
-            target_price = df['BB_Upper'].iloc[-1]
-            
-            # 停損價位（基於動態停損）
-            stop_loss = df['Dynamic_Stop_Loss'].iloc[-1]
-            
-            # 計算風險報酬比
-            if stop_loss > 0:
-                potential_gain = target_price - current_price
-                potential_loss = current_price - stop_loss
-                
-                if potential_loss > 0:
-                    risk_reward_ratio = potential_gain / potential_loss
-                else:
-                    risk_reward_ratio = 0
-            else:
-                risk_reward_ratio = 0
-            
-            return pd.Series([risk_reward_ratio] * len(df), index=df.index)
         except:
             return pd.Series(0, index=df.index)
     
@@ -897,7 +867,6 @@ class IntegratedStockAnalyzer:
                         'ma_bullish_strength': current['MA_Bullish_Strength'],
                         'momentum_acceleration': current['Momentum_Acceleration'],
                         'uptrend_continuity': current['Uptrend_Continuity'],
-                        'risk_reward_ratio': current['Risk_Reward_Ratio'],
                         'trend_reversal_confirmation': current['Trend_Reversal_Confirmation'],
                         'reversal_strength': current['Reversal_Strength'],
                         'reversal_reliability': current['Reversal_Reliability'],
@@ -1195,21 +1164,6 @@ class IntegratedStockAnalyzer:
             score -= 1
             confidence_factors.append("支撐位薄弱")
         
-        # 風險報酬比評估
-        risk_reward_ratio = df['Risk_Reward_Ratio'].iloc[-1]
-        if risk_reward_ratio > 3:
-            score += 2
-            confidence_factors.append("風險報酬比極佳")
-        elif risk_reward_ratio > 2:
-            score += 1
-            confidence_factors.append("風險報酬比良好")
-        elif risk_reward_ratio > 1.5:
-            score += 0.5
-            confidence_factors.append("風險報酬比可接受")
-        elif risk_reward_ratio < 1:
-            score -= 1
-            confidence_factors.append("風險報酬比不佳")
-        
         # ===== 新增：趨勢反轉評估 =====
         
         # 趨勢反轉確認評估
@@ -1405,20 +1359,20 @@ class IntegratedStockAnalyzer:
     
     def analyze_specific_stocks(self, symbols):
         results = []
-        print(f"📊 開始對指定的 {len(symbols)} 支股票進行單獨分析...")
+        print(f"開始對指定的 {len(symbols)} 支股票進行單獨分析...")
         for i, symbol in enumerate(symbols):
             print(f"   正在分析 {symbol} ({i+1}/{len(self.stocks)})...")
             result = self.analyze_stock(symbol)
             if result:
                 results.append(result)
             time.sleep(1)
-        print("✅ 指定股票分析完成")
+        print("指定股票分析完成")
         return results
     
     def analyze_watchlist(self):
         results = []
         
-        print(f"📊 開始分析 {len(self.stocks)} 支股票...")
+        print(f"開始分析 {len(self.stocks)} 支股票...")
         
         for i, symbol in enumerate(self.stocks):
             print(f"   正在分析 {symbol} ({i+1}/{len(self.stocks)})...")
@@ -1427,14 +1381,14 @@ class IntegratedStockAnalyzer:
                 results.append(result)
             time.sleep(1)
         
-        print("🔄 正在整合分析結果...")
+        print("正在整合分析結果...")
         
         # 轉換為DataFrame
         df_results = pd.DataFrame(results)
         
         # 計算綜合評分
         if not df_results.empty:
-            print("📈 正在計算綜合評分...")
+            print("正在計算綜合評分...")
             df_results['composite_score'] = 0
             
             # 有訊號的股票
@@ -1471,28 +1425,29 @@ class IntegratedStockAnalyzer:
             # 按綜合評分排序
             df_results = df_results.sort_values('composite_score', ascending=False, na_position='last')
         
-        print("✅ 分析結果整合完成")
+        print("分析結果整合完成")
         return df_results
     
     def generate_report(self, results_df):
         print("\n" + "="*100)
-        print("🎯 股票抄底機會分析報告 - 被低估、可抄底、短期趨勢反轉股票")
+        print("股票抄底機會分析報告 - 被低估、可抄底、短期趨勢反轉股票")
         print("="*100)
         print(f"分析時間：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         print(f"觀察池股票數量：{len(self.stocks)}")
         print("="*100)
         
         if results_df.empty:
-            print("❌ 無法獲取任何股票數據")
+            print("無法獲取任何股票數據")
             return
         
         # 顯示最佳抄底機會
-        print("\n🏆 最佳抄底機會（趨勢反轉確認）：")
+        # 顯示最佳抄底機會
+        print("最佳抄底機會（趨勢反轉確認）：")
         print("-" * 100)
         
         for _, row in results_df.iterrows():
             if pd.notna(row['long_days']):
-                print(f"🥇 {row['symbol']} ({row['name']})")
+                print(f"   {row['symbol']} ({row['name']})")
                 print(f"   進場建議: {row['entry_opportunity']}")
                 print(f"   信心度: {row['confidence_score']:.0f}/100 ({row['confidence_level']})")
                 print(f"   當前價格: ${row['current_price']:.2f}")
@@ -1544,7 +1499,7 @@ class IntegratedStockAnalyzer:
                         reversal_indicators.append(f"結構未轉({row['price_structure_reversal']:.0f}分)")
                 
                 if reversal_indicators:
-                    print(f"   🔄 趨勢反轉: {', '.join(reversal_indicators[:3])}")  # 只顯示前3個
+                    print(f"    趨勢反轉: {', '.join(reversal_indicators[:3])}")  # 只顯示前3個
                 
                 # 顯示信心度因素（重點顯示趨勢反轉相關）
                 confidence_factors = row.get('confidence_factors', [])
@@ -1555,18 +1510,18 @@ class IntegratedStockAnalyzer:
                     other_factors = [f for f in confidence_factors if f not in reversal_factors and f not in risk_factors]
                     
                     if reversal_factors:
-                        print(f"   📈 反轉確認: {', '.join(reversal_factors[:2])}")
+                        print(f"    反轉確認: {', '.join(reversal_factors[:2])}")
                     if risk_factors:
-                        print(f"   ⚠️ 風險提醒: {', '.join(risk_factors[:2])}")
+                        print(f"    風險提醒: {', '.join(risk_factors[:2])}")
                     if other_factors:
-                        print(f"   📊 技術優勢: {', '.join(other_factors[:2])}")
+                        print(f"    技術優勢: {', '.join(other_factors[:2])}")
                 
                 print()
         
         # 顯示無訊號但可能被低估的股票
         no_signals = results_df[results_df['long_days'].isna()]
         if not no_signals.empty:
-            print("\n💡 無多頭訊號但可能被低估的股票：")
+            print("\n無多頭訊號但可能被低估的股票：")
             print("-" * 60)
             for _, row in no_signals.iterrows():
                 print(f"   {row['symbol']} ({row['name']})")
@@ -1580,7 +1535,7 @@ class IntegratedStockAnalyzer:
     def save_csv(self, df, filename='integrated_stock_analysis.csv'):
         if not df.empty:
             df.to_csv(filename, index=False, encoding='utf-8-sig')
-            print(f"💾 分析結果已儲存至 {filename}")
+            print(f" 分析結果已儲存至 {filename}")
 
 class NpEncoder(json.JSONEncoder):
     def default(self, obj):
@@ -1593,17 +1548,17 @@ class NpEncoder(json.JSONEncoder):
         return super(NpEncoder, self).default(obj)
 
 def main():
-    print("🚀 啟動整合股票分析系統...")
+    print("啟動整合股票分析系統...")
     
     analyzer = IntegratedStockAnalyzer()
     
-    print("📊 開始股票分析...")
+    print("開始股票分析...")
     results = analyzer.analyze_watchlist()
     
-    print("📋 正在生成分析報告...")
+    print("正在生成分析報告...")
     analyzer.generate_report(results)
     
-    print("💾 正在儲存分析結果...")
+    print("正在儲存分析結果...")
     analyzer.save_csv(results)
     
     analysis_result = {}
@@ -1622,17 +1577,17 @@ def main():
         # 在根目錄創建
         with open('analysis_result.json', 'w', encoding='utf-8') as f:
             json.dump(analysis_result, f, indent=2, ensure_ascii=False, cls=NpEncoder)
-        print(f"💾 分析結果已儲存至 analysis_result.json")
+        print(f"分析結果已儲存至 analysis_result.json")
         
         # 在 backend 目錄也創建一份
         backend_path = Path("backend/analysis_result.json")
         backend_path.parent.mkdir(exist_ok=True)
         with open(backend_path, 'w', encoding='utf-8') as f:
             json.dump(analysis_result, f, indent=2, ensure_ascii=False, cls=NpEncoder)
-        print(f"💾 分析結果已儲存至 backend/analysis_result.json")
+        print(f"分析結果已儲存至 backend/analysis_result.json")
 
     # 新增：更新股票監控清單
-    print("\n🔄 開始更新股票監控清單...")
+    print("\n開始更新股票監控清單...")
     MONITORED_STOCKS_PATH = Path("backend/monitored_stocks.json")
     
     try:
@@ -1642,7 +1597,7 @@ def main():
         monitored_stocks = []
         
     monitored_symbols = {stock['symbol'] for stock in monitored_stocks}
-    print(f"🔍 目前監控清單中有 {len(monitored_symbols)} 支股票。")
+    print(f"目前監控清單中有 {len(monitored_symbols)} 支股票。")
 
     stocks_to_add = []
     if analysis_result and 'result' in analysis_result:
@@ -1656,7 +1611,7 @@ def main():
 
             if composite_score >= 90 and confidence_score >= 80:
                 if symbol not in monitored_symbols:
-                    print(f"⭐ 新增股票到監控清單: {symbol} (綜合評分: {composite_score:.2f}, 信心度: {confidence_score:.2f})")
+                    print(f"新增股票到監控清單: {symbol} (綜合評分: {composite_score:.2f}, 信心度: {confidence_score:.2f})")
                     
                     new_entry = {
                         "symbol": symbol,
@@ -1677,11 +1632,11 @@ def main():
         monitored_stocks.extend(stocks_to_add)
         with open(MONITORED_STOCKS_PATH, 'w', encoding='utf-8') as f:
             json.dump(monitored_stocks, f, indent=2, ensure_ascii=False)
-        print(f"💾 成功新增 {len(stocks_to_add)} 支股票到監控清單。檔案已更新: {MONITORED_STOCKS_PATH}")
+        print(f"成功新增 {len(stocks_to_add)} 支股票到監控清單。檔案已更新: {MONITORED_STOCKS_PATH}")
     else:
-        print("ℹ️  本次分析無新增符合條件的股票進入監控清單。")
+        print("本次分析無新增符合條件的股票進入監控清單。")
     
-    print("\n✅ 整合分析完成！")
+    print("\n 整合分析完成！")
 
 if __name__ == "__main__":
     main() 

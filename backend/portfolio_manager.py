@@ -152,7 +152,6 @@ def evaluate_exit_confidence(trade, latest_analysis):
         "RSI超買風險": 0.50, 
         "價格跌破20日均線": 0.50,
         "均線排列不佳": 0.50,
-        "風險報酬比不佳": 0.40,
         "RSI偏高": 0.40,
         "動量減速": 0.50,
         "價格跌破5日均線": 0.40,
@@ -234,11 +233,6 @@ def evaluate_exit_confidence(trade, latest_analysis):
         base_exit_score += 0.1
     if reversal_reliability < 50: # 反轉可信度低
         base_exit_score += 0.1
-
-    # 風險報酬比惡化 (從 integrated_stock_analyzer.py 獲取)
-    risk_reward_ratio = current_snapshot.get('risk_reward_ratio') or 1.0
-    if risk_reward_ratio < 1.0: # 風險報酬比小於1
-        base_exit_score += 0.2
 
     # 確保信心度在0到1之間
     exit_confidence = max(0.0, min(1.0, base_exit_score))
