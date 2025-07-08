@@ -17,7 +17,7 @@ ANALYSIS_RESULT_FILE = os.path.join(os.path.dirname(__file__), '..', 'analysis_r
 TRADE_HISTORY_FILE = os.path.join(os.path.dirname(__file__), 'trade_history.json')
 
 # --- 策略參數 (可調整) ---
-STOP_LOSS_PERCENTAGE = 0.08  # 硬性止損百分比 (8% 虧損)
+STOP_LOSS_PERCENTAGE = 0.05  # 硬性止損百分比 (5% 虧損)
 PROFIT_TAKING_PERCENTAGE = 0.20 # 獲利了結百分比 (20% 獲利)
 
 # --- 數據讀寫輔助函式 ---
@@ -150,25 +150,25 @@ def evaluate_exit_confidence(trade, latest_analysis):
     DANGER_SIGNALS = {
         "MACD死叉": 0.60, 
         "RSI超買風險": 0.50, 
-        "價格跌破20日均線": 0.40,
-        "均線排列不佳": 0.40,
+        "價格跌破20日均線": 0.50,
+        "均線排列不佳": 0.50,
         "風險報酬比不佳": 0.40,
         "RSI偏高": 0.40,
-        "動量減速": 0.40,
+        "動量減速": 0.50,
         "價格跌破5日均線": 0.40,
         "趨勢反轉確認": -0.50, # 反轉確認在出場時是負面因素
-        "反轉強度強勁": -0.40,
-        "反轉可信度高": -0.40,
-        "短期動能轉折": -0.30,
-        "價格結構反轉": -0.30,
+        "反轉強度強勁": -0.50,
+        "反轉可信度高": -0.50,
+        "短期動能轉折": -0.50,
+        "價格結構反轉": -0.50,
         "波動率過高": 0.30,
         "支撐位薄弱": 0.30,
-        "相對強度為負": 0.20,
-        "上漲動能不足": 0.20,
-        "指標斜率向下": 0.20,
-        "動量減速": 0.20,
-        "價格通道向下": 0.20,
-        "成交量配合不佳": 0.20
+        "相對強度為負": 0.50,
+        "上漲動能不足": 0.50,
+        "指標斜率向下": 0.50,
+        "動量減速": 0.50,
+        "價格通道向下": 0.50,
+        "成交量配合不佳": 0.30
     }
     
     penalty_score = 0.0
@@ -192,7 +192,7 @@ def evaluate_exit_confidence(trade, latest_analysis):
 
     # 5. 計算綜合信心度 (Composite Exit Confidence Score)
     # 基礎分數，考慮理由侵蝕和風險懲罰
-    base_exit_score = (erosion_score * 0.5) + (min(penalty_score, 1.0) * 0.5)
+    base_exit_score = (erosion_score * 1) + (min(penalty_score, 1.0) * 1)
 
     # 引入更多出場相關指標的影響
     # 這些指標從 current_snapshot 中獲取，增加對 None 值的處理
