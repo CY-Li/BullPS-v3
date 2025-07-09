@@ -1284,70 +1284,57 @@ class IntegratedStockAnalyzer:
         
         # 計算技術指標
         df = self.calculate_technical_indicators(data)
-        if df is None:
+        if df is None or df.empty:
             return None
         
+        # 確保 current_price, SAR, confidence_factors 總是存在
+        current_price = df['Close'].iloc[-1] if not df.empty else None
+        current_sar = df['SAR'].iloc[-1] if 'SAR' in df.columns and not df.empty else None
+        entry_advice, confidence_score, confidence_level, confidence_factors = self.assess_entry_opportunity(df)
+
         # 檢測多頭訊號
         signals = self.detect_bullish_signals(df)
         
         # 計算Long Signal Price
         long_signal_price, long_signal_confidence = self.calculate_long_signal_price(df)
         
-        # 當前價格
-        current_price = df['Close'].iloc[-1]
-        
-        # 計算距離Long Signal Price的百分比
-        distance_to_signal = ((current_price - long_signal_price) / long_signal_price) * 100
-        
+        base_result = {
+            'symbol': symbol,
+            'name': stock_info['name'],
+            'market': stock_info['market'],
+            'current_price': current_price,
+            'sar': current_sar, # 總是包含 SAR
+            'confidence_factors': confidence_factors, # 總是包含 confidence_factors
+            'rsi': df['RSI'].iloc[-1] if 'RSI' in df.columns else None,
+            'macd': df['MACD'].iloc[-1] if 'MACD' in df.columns else None,
+            'volume_ratio': df['Volume_Ratio'].iloc[-1] if 'Volume_Ratio' in df.columns else None,
+            'long_signal_price': long_signal_price,
+            'long_signal_confidence': long_signal_confidence,
+            'entry_opportunity': entry_advice,
+            'confidence_score': confidence_score,
+            'confidence_level': confidence_level,
+        }
+
         if not signals:
-            return {
-                'symbol': symbol,
-                'name': stock_info['name'],
-                'market': stock_info['market'],
+            base_result.update({
                 'long_days': None,
                 'status': '無多頭訊號',
-                'current_price': current_price,
-                'long_signal_price': long_signal_price,
-                'distance_to_signal': distance_to_signal,
-                'long_signal_confidence': long_signal_confidence,
-                'rsi': df['RSI'].iloc[-1],
-                'macd': df['MACD'].iloc[-1],
-                'volume_ratio': df['Volume_Ratio'].iloc[-1]
-            }
+                'distance_to_signal': ((current_price - long_signal_price) / long_signal_price) * 100 if current_price and long_signal_price else None,
+            })
+            return base_result
         
         # 找到最近的多頭訊號
         latest_signal = signals[-1]
         current_date = df.index[-1]
         days_since_signal = (current_date - latest_signal['date']).days
-        
-        # 評估當前狀態
-        current_rsi = df['RSI'].iloc[-1]
-        current_macd = df['MACD'].iloc[-1]
-        current_volume_ratio = df['Volume_Ratio'].iloc[-1]
-        
-        # 判斷是否適合進場
-        entry_opportunity, confidence_score, confidence_level, confidence_factors = self.assess_entry_opportunity(df)
-        
-        return {
-            'symbol': symbol,
-            'name': stock_info['name'],
-            'market': stock_info['market'],
+
+        base_result.update({
             'long_days': days_since_signal,
             'latest_signal_date': latest_signal['date'].strftime('%Y-%m-%d'),
             'latest_signal_price': latest_signal['price'],
             'signal_conditions': latest_signal['conditions'],
-            'current_price': current_price,
             'current_date': current_date.strftime('%Y-%m-%d'),
-            'long_signal_price': long_signal_price,
-            'distance_to_signal': distance_to_signal,
-            'long_signal_confidence': long_signal_confidence,
-            'rsi': current_rsi,
-            'macd': current_macd,
-            'volume_ratio': current_volume_ratio,
-            'entry_opportunity': entry_opportunity,
-            'confidence_score': confidence_score,
-            'confidence_level': confidence_level,
-            'confidence_factors': confidence_factors,
+            'distance_to_signal': ((current_price - long_signal_price) / long_signal_price) * 100,
             'price_change_since_signal': ((current_price - latest_signal['price']) / latest_signal['price']) * 100,
             # 修正：加入趨勢反轉指標到返回結果
             'trend_reversal_confirmation': latest_signal.get('trend_reversal_confirmation', 0),
@@ -1355,7 +1342,9 @@ class IntegratedStockAnalyzer:
             'reversal_reliability': latest_signal.get('reversal_reliability', 0),
             'short_term_momentum_turn': latest_signal.get('short_term_momentum_turn', 0),
             'price_structure_reversal': latest_signal.get('price_structure_reversal', 0)
-        }
+        })
+        
+        return base_result
     
     def analyze_specific_stocks(self, symbols):
         results = []

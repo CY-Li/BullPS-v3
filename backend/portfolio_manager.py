@@ -17,8 +17,6 @@ ANALYSIS_RESULT_FILE = os.path.join(os.path.dirname(__file__), '..', 'analysis_r
 TRADE_HISTORY_FILE = os.path.join(os.path.dirname(__file__), 'trade_history.json')
 
 # --- 策略參數 (可調整) ---
-STOP_LOSS_PERCENTAGE = 0.05  # 硬性止損百分比 (5% 虧損)
-PROFIT_TAKING_PERCENTAGE = 0.20 # 獲利了結百分比 (20% 獲利)
 
 # --- 數據讀寫輔助函式 ---
 
@@ -133,8 +131,6 @@ def evaluate_exit_confidence(trade, latest_analysis):
             "exit_confidence": 0.0,
             "erosion_score": 0.0,
             "penalty_score": 0.0,
-            "stop_loss_score": 0.0,
-            "profit_taking_score": 0.0,
             "details": {
                 "disappeared_reasons": [],
                 "triggered_penalties": [],
@@ -177,19 +173,7 @@ def evaluate_exit_confidence(trade, latest_analysis):
             penalty_score += penalty
             triggered_penalties.append(signal)
 
-    # 3. 硬性止損分數 (Hard Stop-Loss Score) - 獨立計算，不影響 exit_confidence
-    stop_loss_score = 0.0
-    if entry_price > 0 and current_price > 0:
-        if (entry_price - current_price) / entry_price >= STOP_LOSS_PERCENTAGE:
-            stop_loss_score = 1.0 # 觸發止損，給滿分
-
-    # 4. 獲利了結分數 (Profit-Taking Score) - 獨立計算，不影響 exit_confidence
-    profit_taking_score = 0.0
-    if entry_price > 0 and current_price > 0:
-        if (current_price - entry_price) / entry_price >= PROFIT_TAKING_PERCENTAGE:
-            profit_taking_score = 0.5 # 達到獲利目標，給予一定分數
-
-    # 5. 計算綜合信心度 (Composite Exit Confidence Score)
+    # 3. 計算綜合信心度 (Composite Exit Confidence Score)
     # 基礎分數，考慮理由侵蝕和風險懲罰
     base_exit_score = (erosion_score * 1) + (min(penalty_score, 1.0) * 1)
 
@@ -242,8 +226,6 @@ def evaluate_exit_confidence(trade, latest_analysis):
         "exit_confidence": round(exit_confidence, 2),
         "erosion_score": round(erosion_score, 2),
         "penalty_score": round(penalty_score, 2),
-        "stop_loss_score": round(stop_loss_score, 2),
-        "profit_taking_score": round(profit_taking_score, 2),
         "details": {
             "disappeared_reasons": disappeared_reasons,
             "triggered_penalties": triggered_penalties,
@@ -444,63 +426,58 @@ def check_monitored_stocks_for_exit():
 
         latest_analysis = get_latest_analysis(symbol)
         if not latest_analysis:
-            # 如果找不到最新分析，觸發對該股票的單獨分析
             latest_analysis = re_analyze_missing_stock(symbol)
 
         if not latest_analysis:
             print(f"\n警告: 找不到 {symbol} 的最新分析數據，跳過評估。")
             continue
 
-        report = evaluate_exit_confidence(trade, latest_analysis)
-        
-        # 安全地獲取買入價以供顯示
         purchase_price = trade.get('entry_price', 'N/A')
-        print(f"\n股票: {report['symbol']} (買入價: {purchase_price})")
-        
-        if report['details'].get('notes'):
-            print(f"  - {report['details']['notes']}")
-            continue
+        print(f"\n股票: {symbol} (買入價: {purchase_price})")
 
-        print(f"出場信心度: {report['exit_confidence'] * 100:.0f}%")
-        
-        # 打印詳細分數
-        print(f"  - 理由侵蝕: {report['erosion_score']:.2f} ({len(report['details']['disappeared_reasons'])}個理由消失)")
-        print(f"  - 風險懲罰: {report['penalty_score']:.2f} (觸發: {', '.join(report['details']['triggered_penalties']) if report['details']['triggered_penalties'] else '無'})")
-        print(f"  - 硬性止損: {report['stop_loss_score']:.2f} (觸發: {'是' if report['stop_loss_score'] > 0 else '否'})")
-        print(f"  - 獲利了結: {report['profit_taking_score']:.2f} (觸發: {'是' if report['profit_taking_score'] > 0 else '否'})")
+        # --- 執行新的雙重出場邏輯 ---
+        should_sell = False
+        exit_reason = []
 
-        # 根據信心度決定行動
-        # 優先檢查硬性止損
-        if report['stop_loss_score'] == 1.0:
-            current_price = latest_analysis.get('current_price')
-            if current_price:
-                print(f"決策: 硬性止損觸發！(虧損達到 {STOP_LOSS_PERCENTAGE*100:.0f}%)。以當前價格 {current_price:.2f} 賣出。")
-                remove_from_monitoring(symbol, current_price, ["硬性止損觸發"])
+        # 1. 優先檢查 Parabolic SAR 移動停損
+        current_price = latest_analysis.get('current_price')
+        # 從 `analyze_stock` 的返回結果中獲取 SAR
+        # 注意：`analyze_stock` 需要返回 SAR 值，我們假設它在 'latest_signal' 或頂層
+        # 為了穩健，我們從 latest_analysis 的頂層獲取
+        current_sar = latest_analysis.get('sar') # 假設 sar 鍵存在
+
+        if current_price is not None and current_sar is not None:
+            if current_price < current_sar:
+                should_sell = True
+                reason = f"Parabolic SAR 移動停損 (價格: {current_price:.2f} < SAR: {current_sar:.2f})"
+                exit_reason.append(reason)
+                print(f"決策: {reason}")
+        else:
+            print(f"  - 警告: {symbol} 的最新分析缺少價格或SAR數據，無法評估SAR停損。")
+
+        # 2. 若未觸發SAR停損，才檢查綜合信心度
+        if not should_sell:
+            report = evaluate_exit_confidence(trade, latest_analysis)
+            print(f"出場信心度: {report.get('exit_confidence', 0) * 100:.0f}%")
+            print(f"  - 理由侵蝕: {report.get('erosion_score', 0):.2f}")
+            print(f"  - 風險懲罰: {report.get('penalty_score', 0):.2f}")
+
+            if report.get('exit_confidence', 0) >= 0.8:
+                should_sell = True
+                reason = f"出場信心度達到 {report.get('exit_confidence', 0) * 100:.0f}%"
+                exit_reason.append(reason)
+                exit_reason.extend(report.get('details', {}).get('triggered_penalties', []))
+                print(f"決策: {reason}")
+
+        # 3. 執行賣出操作
+        if should_sell:
+            if current_price is not None:
+                print(f"執行賣出 {symbol} at ${current_price:.2f}")
+                remove_from_monitoring(symbol, current_price, exit_reason)
             else:
-                print(f"錯誤: {symbol} 的最新分析中沒有 'current_price'，無法自動執行清倉。")
-        elif report['exit_confidence'] >= 0.8: # 強烈建議清倉
-            current_price = latest_analysis.get('current_price')
-            if current_price:
-                print(f"決策: 強烈建議清倉！(信心度 {report['exit_confidence']:.2f} >= 0.8)。以當前價格 {current_price:.2f} 賣出。")
-                remove_from_monitoring(symbol, current_price, ["強烈建議清倉", f"出場信心度達到 {report['exit_confidence'] * 100:.0f}%"] + [f"進場條件消失：{r}" for r in report['details']['disappeared_reasons']] + report['details']['triggered_penalties'])
-            else:
-                print(f"錯誤: {symbol} 的最新分析中沒有 'current_price'，無法自動執行清倉。")
-        elif report['exit_confidence'] >= 0.6: # 建議減倉
-            current_price = latest_analysis.get('current_price')
-            if current_price:
-                print(f"決策: 建議減倉！(信心度 {report['exit_confidence']:.2f} >= 0.6)。以當前價格 {current_price:.2f} 賣出部分倉位。")
-                # 這裡可以觸發部分賣出邏輯，例如賣出 50% 倉位
-                # remove_from_monitoring(symbol, current_price) # 這裡不移除，只減倉
-            else:
-                print(f"錯誤: {symbol} 的最新分析中沒有 'current_price'，無法建議減倉。")
-        elif report['exit_confidence'] >= 0.5: # 密切觀察
-            print(f"決策: 密切觀察！(信心度 {report['exit_confidence']:.2f} >= 0.5)。")
+                print(f"錯誤: {symbol} 缺少當前價格，無法執行賣出操作。")
         else:
             print("決策: 繼續持有。")
-
-        # 獲利了結的提示可以獨立顯示，不影響清倉決策
-        if report['profit_taking_score'] > 0:
-            print(f"  - 提示: 已達到獲利了結目標 ({PROFIT_TAKING_PERCENTAGE*100:.0f}% 獲利)。")
 
 # --- 使用範例 ---
 if __name__ == '__main__':
