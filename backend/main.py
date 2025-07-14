@@ -63,10 +63,33 @@ analysis_status = {
     "error": None
 }
 
-# 確保檔案存在
-if not ANALYSIS_PATH.exists():
-    logger.warning(f"Analysis file not found at {ANALYSIS_PATH}, creating empty one")
-    ANALYSIS_PATH.write_text(json.dumps({"result": []}), encoding='utf-8')
+# 確保檔案存在並格式正確
+def ensure_json_file_exists(file_path, default_content):
+    """確保 JSON 文件存在且格式正確"""
+    try:
+        if not file_path.exists():
+            logger.warning(f"File not found at {file_path}, creating with default content")
+            file_path.write_text(json.dumps(default_content), encoding='utf-8')
+        else:
+            # 檢查文件是否為有效 JSON
+            content = file_path.read_text(encoding='utf-8').strip()
+            if not content:
+                logger.warning(f"File {file_path} is empty, initializing with default content")
+                file_path.write_text(json.dumps(default_content), encoding='utf-8')
+            else:
+                try:
+                    json.loads(content)
+                except json.JSONDecodeError:
+                    logger.warning(f"File {file_path} contains invalid JSON, reinitializing")
+                    file_path.write_text(json.dumps(default_content), encoding='utf-8')
+    except Exception as e:
+        logger.error(f"Error ensuring file {file_path}: {e}")
+        file_path.write_text(json.dumps(default_content), encoding='utf-8')
+
+# 初始化所有必要的 JSON 文件
+ensure_json_file_exists(ANALYSIS_PATH, {"result": []})
+ensure_json_file_exists(MONITORED_STOCKS_PATH, [])
+ensure_json_file_exists(TRADE_HISTORY_PATH, [])
 
 # CORS
 app.add_middleware(
@@ -218,8 +241,24 @@ def get_analysis():
 def get_monitored_stocks():
     try:
         if MONITORED_STOCKS_PATH.exists():
-            data = json.loads(MONITORED_STOCKS_PATH.read_text(encoding='utf-8'))
+            content = MONITORED_STOCKS_PATH.read_text(encoding='utf-8').strip()
+            if not content:
+                # 文件為空，創建空數組
+                logger.warning("monitored_stocks.json is empty, initializing with empty array")
+                MONITORED_STOCKS_PATH.write_text("[]", encoding='utf-8')
+                return []
+
+            data = json.loads(content)
             return data
+        else:
+            # 文件不存在，創建空數組
+            logger.warning("monitored_stocks.json does not exist, creating with empty array")
+            MONITORED_STOCKS_PATH.write_text("[]", encoding='utf-8')
+            return []
+    except json.JSONDecodeError as e:
+        logger.error(f"JSON decode error in monitored stocks: {e}")
+        # JSON 格式錯誤，重新初始化為空數組
+        MONITORED_STOCKS_PATH.write_text("[]", encoding='utf-8')
         return []
     except Exception as e:
         logger.error(f"Error reading monitored stocks: {e}")
