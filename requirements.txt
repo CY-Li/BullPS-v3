@@ -1,7 +1,20 @@
 # BullPS-v3 核心依賴
 # 強化確認機制和多時間框架分析系統
 
+# 數據分析核心
 yfinance>=0.2.18
 pandas>=2.0.0
 numpy>=1.24.0
 requests>=2.28.0
+
+# Web 框架和 API
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+starlette>=0.27.0
+
+# 任務調度
+apscheduler>=3.10.0
+pytz>=2023.3
+
+# 數據處理
+python-multipart>=0.0.6

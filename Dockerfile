@@ -32,7 +32,10 @@ COPY backend ./backend
 COPY stock_watchlist.json ./
 # COPY analysis_result.json ./
 COPY integrated_stock_analyzer.py ./
-COPY options_volume_tracker_v2.py ./
+COPY enhanced_confirmation_system.py ./
+COPY multi_timeframe_analyzer.py ./
+COPY api_error_handler.py ./
+COPY backtester.py ./
 
 # 複製前端構建產物
 COPY --from=frontend-build /app/frontend/dist ./frontend/dist
