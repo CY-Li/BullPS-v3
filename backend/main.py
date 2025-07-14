@@ -10,17 +10,16 @@ from fastapi import FastAPI, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.responses import FileResponse, JSONResponse
+from contextlib import asynccontextmanager
 import subprocess
 import json
 import math
-import yfinance as yf
+
 from pathlib import Path
 from datetime import datetime
 import os
 import logging
-import threading
 import time
-from typing import Dict, Any
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 import pytz
@@ -29,11 +28,24 @@ import pytz
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # 啟動時執行
+    # 每天早上6點（Asia/Taipei）執行
+    scheduler.add_job(scheduled_task, CronTrigger(hour=6, minute=0))
+    scheduler.start()
+    logger.info("Scheduler started")
+
+    yield
+
+    # 關閉時執行
+    scheduler.shutdown()
+    logger.info("Scheduler shutdown")
+
+app = FastAPI(lifespan=lifespan)
 
 # 檔案路徑
 BASE_DIR = Path(__file__).parent.parent
-WATCHLIST_PATH = BASE_DIR / "stock_watchlist.json"
 ANALYSIS_PATH = BASE_DIR / "analysis_result.json"
 MONITORED_STOCKS_PATH = BASE_DIR / "backend" / "monitored_stocks.json"
 TRADE_HISTORY_PATH = BASE_DIR / "backend" / "trade_history.json"
@@ -52,10 +64,6 @@ analysis_status = {
 }
 
 # 確保檔案存在
-if not WATCHLIST_PATH.exists():
-    logger.warning(f"Watchlist file not found at {WATCHLIST_PATH}, creating empty one")
-    WATCHLIST_PATH.write_text(json.dumps({"stocks": [], "settings": {}}), encoding='utf-8')
-
 if not ANALYSIS_PATH.exists():
     logger.warning(f"Analysis file not found at {ANALYSIS_PATH}, creating empty one")
     ANALYSIS_PATH.write_text(json.dumps({"result": []}), encoding='utf-8')
@@ -92,20 +100,10 @@ def clean_nans(obj):
     else:
         return obj
 
-def get_stock_price(symbol: str):
-    try:
-        ticker = yf.Ticker(symbol)
-        info = ticker.info
-        price = info.get('regularMarketPrice')
-        if price and not math.isnan(price):
-            return price
-        return None
-    except Exception as e:
-        logger.error(f"Error getting price for {symbol}: {e}")
-        return None
 
-def run_tracker_and_analyze():
-    """執行選擇權追蹤器和股票分析器，並回報詳細狀態"""
+
+def run_stock_analysis():
+    """執行股票分析器，並回報詳細狀態"""
     global analysis_status
     
     try:
@@ -123,12 +121,8 @@ def run_tracker_and_analyze():
         # 調整工作目錄到專案根目錄
         os.chdir(BASE_DIR)
         
-        # 階段1: 數據收集中
-        update_status("正在掃描選擇權交易量...", 10, "數據收集中")
-        subprocess.run(["python", "options_volume_tracker_v2.py"], check=True, cwd=BASE_DIR)
-        
-        # 階段2: 數據獲取與分析
-        update_status("正在分析股票...", 50, "數據分析中")
+        # 階段1: 數據獲取與分析
+        update_status("正在分析股票...", 30, "數據分析中")
         subprocess.run(["python", "integrated_stock_analyzer.py"], check=True, cwd=BASE_DIR)
         
         # 階段2.5: 比對並更新監控中的股票分析快照
@@ -172,15 +166,11 @@ scheduler = BackgroundScheduler(timezone=pytz.timezone('Asia/Taipei'))
 
 def scheduled_task():
     try:
-        run_tracker_and_analyze()
+        run_stock_analysis()
     except Exception as e:
         logger.error(f"Error in scheduled task: {e}")
 
-@app.on_event("startup")
-def start_scheduler():
-    # 每天早上6點（Asia/Taipei）執行
-    scheduler.add_job(scheduled_task, CronTrigger(hour=6, minute=0))
-    scheduler.start()
+
 
 @app.get("/api/health")
 def health_check():
@@ -203,21 +193,10 @@ def run_now(background_tasks: BackgroundTasks):
     if analysis_status["is_running"]:
         return {"status": "already_running", "message": "分析正在進行中"}
     
-    background_tasks.add_task(run_tracker_and_analyze)
+    background_tasks.add_task(run_stock_analysis)
     return {"status": "started", "message": "分析已開始"}
 
-@app.get("/api/watchlist")
-def get_watchlist():
-    try:
-        if WATCHLIST_PATH.exists():
-            return json.loads(WATCHLIST_PATH.read_text(encoding='utf-8'))
-        return {"stocks": [], "settings": {}}
-    except Exception as e:
-        logger.error(f"Error reading watchlist: {e}")
-        return JSONResponse(
-            status_code=500,
-            content={"error": "Failed to read watchlist"}
-        )
+
 
 @app.get("/api/analysis")
 def get_analysis():
@@ -263,37 +242,7 @@ def get_trade_history():
             content={"error": "Failed to read trade history"}
         )
 
-@app.get("/api/stock-prices")
-def get_stock_prices():
-    try:
-        if WATCHLIST_PATH.exists():
-            watchlist_data = json.loads(WATCHLIST_PATH.read_text(encoding='utf-8'))
-            stocks = watchlist_data.get('stocks', [])
-            prices = {}
-            for symbol in stocks:
-                price = get_stock_price(symbol)
-                prices[symbol] = price
-            return {"prices": prices}
-        else:
-            return {"prices": {}}
-    except Exception as e:
-        logger.error(f"Error getting stock prices: {e}")
-        return JSONResponse(
-            status_code=500,
-            content={"error": "Failed to get stock prices"}
-        )
 
-@app.get("/api/stock-price/{symbol}")
-def get_single_stock_price(symbol: str):
-    try:
-        price = get_stock_price(symbol)
-        return {"symbol": symbol, "price": price}
-    except Exception as e:
-        logger.error(f"Error getting price for {symbol}: {e}")
-        return JSONResponse(
-            status_code=500,
-            content={"error": f"Failed to get price for {symbol}"}
-        )
 
 # 靜態檔案 - 放在 API 路由之後
 if STATIC_DIR.exists():

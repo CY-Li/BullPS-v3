@@ -98,6 +98,165 @@ def get_latest_analysis(symbol):
 
 # --- 核心出場評估邏輯 ---
 
+def evaluate_smart_sar_exit(trade, current_analysis):
+    """
+    智能SAR停損評估
+    結合多重確認機制，避免假突破
+    """
+    current_price = current_analysis.get('current_price')
+    current_sar = current_analysis.get('sar')
+    entry_price = trade.get('entry_price')
+    entry_date = trade.get('entry_date')
+
+    # 檢查數據有效性
+    if current_price is None or current_sar is None:
+        return {
+            'should_exit': False,
+            'reason': 'SAR數據不完整',
+            'confirmation_score': 0,
+            'max_confirmation_score': 0,
+            'confirmation_factors': ['數據缺失']
+        }
+
+    # 確保數據類型正確
+    try:
+        current_price = float(current_price)
+        current_sar = float(current_sar)
+    except (ValueError, TypeError):
+        return {
+            'should_exit': False,
+            'reason': 'SAR數據格式錯誤',
+            'confirmation_score': 0,
+            'max_confirmation_score': 0,
+            'confirmation_factors': ['數據格式錯誤']
+        }
+
+    # 檢查數據是否為有效數值
+    if not (np.isfinite(current_price) and np.isfinite(current_sar)):
+        return {
+            'should_exit': False,
+            'reason': 'SAR數據包含無效值',
+            'confirmation_score': 0,
+            'max_confirmation_score': 0,
+            'confirmation_factors': ['無效數值']
+        }
+
+    # 基本SAR信號
+    basic_sar_triggered = current_price < current_sar
+
+    if not basic_sar_triggered:
+        return {
+            'should_exit': False,
+            'reason': 'SAR未觸發',
+            'confirmation_score': 0,
+            'max_confirmation_score': 0,
+            'confirmation_factors': []
+        }
+
+    # 計算持倉天數
+    from datetime import datetime
+    try:
+        entry_dt = datetime.strptime(entry_date, '%Y-%m-%d')
+        current_dt = datetime.now()
+        holding_days = (current_dt - entry_dt).days
+    except:
+        holding_days = 0
+
+    # 計算獲利幅度
+    profit_pct = ((current_price - entry_price) / entry_price) * 100 if entry_price else 0
+
+    # 確認機制評分
+    confirmation_score = 0
+    confirmation_factors = []
+    max_score = 8
+
+    # 1. 獲利保護機制（獲利越多，停損越寬鬆）
+    if profit_pct > 20:
+        # 大幅獲利時，需要更強確認
+        required_confirmation = 6
+    elif profit_pct > 10:
+        # 中等獲利時，中等確認
+        required_confirmation = 4
+    elif profit_pct > 0:
+        # 小幅獲利時，較少確認
+        required_confirmation = 3
+    else:
+        # 虧損時，較嚴格停損
+        required_confirmation = 2
+
+    # 2. 持倉時間考量
+    if holding_days < 3:
+        # 短期持倉，避免過早停損
+        required_confirmation += 1
+        confirmation_factors.append("短期持倉保護")
+    elif holding_days > 30:
+        # 長期持倉，適度放寬
+        required_confirmation = max(required_confirmation - 1, 2)
+
+    # 3. 技術指標確認
+    current_rsi = current_analysis.get('rsi', 50)
+    current_macd = current_analysis.get('macd', 0)
+    current_volume_ratio = current_analysis.get('volume_ratio', 1)
+
+    # RSI確認
+    if current_rsi > 70:
+        confirmation_score += 2
+        confirmation_factors.append("RSI超買")
+    elif current_rsi > 60:
+        confirmation_score += 1
+        confirmation_factors.append("RSI偏高")
+
+    # MACD確認
+    if current_macd < 0:
+        confirmation_score += 2
+        confirmation_factors.append("MACD轉負")
+
+    # 成交量確認
+    if current_volume_ratio > 1.5:
+        confirmation_score += 1
+        confirmation_factors.append("放量下跌")
+
+    # 4. 價格結構確認
+    sar_penetration = ((current_sar - current_price) / current_price) * 100
+    if sar_penetration > 2:
+        confirmation_score += 2
+        confirmation_factors.append("深度跌破SAR")
+    elif sar_penetration > 1:
+        confirmation_score += 1
+        confirmation_factors.append("明顯跌破SAR")
+
+    # 5. 趨勢強度確認
+    confidence_factors = current_analysis.get('confidence_factors', [])
+    negative_factors = [
+        "RSI超買風險", "MACD死叉", "價格跌破20日均線",
+        "均線排列不佳", "動量減速", "趨勢反轉確認"
+    ]
+
+    negative_count = sum(1 for factor in confidence_factors if any(neg in factor for neg in negative_factors))
+    if negative_count >= 3:
+        confirmation_score += 2
+        confirmation_factors.append("多重負面信號")
+    elif negative_count >= 2:
+        confirmation_score += 1
+        confirmation_factors.append("部分負面信號")
+
+    # 決策邏輯
+    should_exit = confirmation_score >= required_confirmation
+
+    reason = f"SAR移動停損 (價格: {current_price:.2f} < SAR: {current_sar:.2f}, 獲利: {profit_pct:.1f}%, 持倉: {holding_days}天)"
+
+    return {
+        'should_exit': should_exit,
+        'reason': reason,
+        'confirmation_score': confirmation_score,
+        'max_confirmation_score': max_score,
+        'required_confirmation': required_confirmation,
+        'confirmation_factors': confirmation_factors,
+        'profit_pct': profit_pct,
+        'holding_days': holding_days,
+        'sar_penetration': sar_penetration
+    }
+
 def evaluate_exit_confidence(trade, latest_analysis):
     """
     評估單一持倉的出場信心度
@@ -439,19 +598,20 @@ def check_monitored_stocks_for_exit():
         should_sell = False
         exit_reason = []
 
-        # 1. 優先檢查 Parabolic SAR 移動停損
+        # 1. 智能SAR移動停損檢查
         current_price = latest_analysis.get('current_price')
-        # 從 `analyze_stock` 的返回結果中獲取 SAR
-        # 注意：`analyze_stock` 需要返回 SAR 值，我們假設它在 'latest_signal' 或頂層
-        # 為了穩健，我們從 latest_analysis 的頂層獲取
-        current_sar = latest_analysis.get('sar') # 假設 sar 鍵存在
+        current_sar = latest_analysis.get('sar')
 
         if current_price is not None and current_sar is not None:
-            if current_price < current_sar:
+            sar_decision = evaluate_smart_sar_exit(trade, latest_analysis)
+
+            if sar_decision['should_exit']:
                 should_sell = True
-                reason = f"Parabolic SAR 移動停損 (價格: {current_price:.2f} < SAR: {current_sar:.2f})"
+                reason = sar_decision['reason']
                 exit_reason.append(reason)
                 print(f"決策: {reason}")
+                print(f"  - 確認分數: {sar_decision['confirmation_score']}/{sar_decision['max_confirmation_score']}")
+                print(f"  - 確認因素: {', '.join(sar_decision['confirmation_factors'])}")
         else:
             print(f"  - 警告: {symbol} 的最新分析缺少價格或SAR數據，無法評估SAR停損。")
 

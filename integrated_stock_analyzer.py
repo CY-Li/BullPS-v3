@@ -16,12 +16,17 @@ import time
 import pytz
 warnings.filterwarnings('ignore')
 from pathlib import Path
+from enhanced_confirmation_system import EnhancedConfirmationSystem
+from multi_timeframe_analyzer import MultiTimeframeAnalyzer
 
 class IntegratedStockAnalyzer:
     def __init__(self, watchlist_file='stock_watchlist.json'):
         self.watchlist_file = watchlist_file
         self.watchlist = self.load_watchlist()
         self.stocks = self.watchlist.get('stocks', [])
+        self.market_sentiment = None  # 市場情緒指標
+        self.confirmation_system = EnhancedConfirmationSystem()  # 強化確認系統
+        self.mtf_analyzer = MultiTimeframeAnalyzer()  # 多時間框架分析器
         
     def load_watchlist(self):
         try:
@@ -47,18 +52,47 @@ class IntegratedStockAnalyzer:
             return {'symbol': symbol, 'name': symbol, 'market': 'Unknown'}
     
     def get_stock_data(self, symbol, period='60d', max_retries=3):
+        # 檢查股票代號有效性
+        if not symbol or symbol in ['UNKNOWN', '$UNKNOWN'] or symbol.startswith('$'):
+            return None
+
         for attempt in range(max_retries):
             try:
                 ticker = yf.Ticker(symbol)
                 data = ticker.history(period=period, timeout=60)
+
                 if data.empty:
+                    if attempt == 0:  # 只在第一次嘗試時顯示警告
+                        print(f"  ⚠️  {symbol}: 無數據返回")
                     return None
+
+                if len(data) < 30:
+                    if attempt == 0:
+                        print(f"  ⚠️  {symbol}: 數據不足 ({len(data)}天)")
+                    return None
+
                 return data
+
             except Exception as e:
+                error_msg = str(e)
+
+                if attempt == 0:  # 只在第一次嘗試時顯示詳細錯誤
+                    if "404" in error_msg or "delisted" in error_msg.lower():
+                        print(f"  ❌ {symbol}: 股票可能已下市")
+                        return None  # 不重試下市股票
+                    elif "No data found" in error_msg:
+                        print(f"  ❌ {symbol}: 無數據")
+                        return None  # 不重試無數據股票
+                    elif "timeout" in error_msg.lower():
+                        print(f"  ⏳ {symbol}: 請求超時，重試中...")
+                    else:
+                        print(f"  ❌ {symbol}: 獲取數據失敗 - {error_msg}")
+
                 if attempt < max_retries - 1:
-                    time.sleep(2)
+                    time.sleep(2)  # 等待後重試
                 else:
                     return None
+
         return None
     
     def calculate_technical_indicators(self, data):
@@ -170,17 +204,63 @@ class IntegratedStockAnalyzer:
         
         return df
     
-    def calculate_sar(self, df, af=0.02, max_af=0.2):
-        # 簡易SAR計算
-        sar = [df['Low'].iloc[0]]
-        ep = df['High'].iloc[0]
-        trend = 1  # 1: up, -1: down
+    def calculate_sar(self, df, af=None, max_af=None):
+        """
+        智能動態SAR計算
+        根據股票波動性自動調整參數
+        """
+        # 計算股票的歷史波動性
+        volatility = df['Close'].pct_change().std() * np.sqrt(252)
+
+        # 根據波動性動態調整參數
+        if af is None:
+            if volatility > 0.4:  # 高波動股票
+                af = 0.015  # 較小的加速因子，避免過於敏感
+            elif volatility > 0.25:  # 中等波動
+                af = 0.02   # 標準參數
+            else:  # 低波動股票
+                af = 0.025  # 較大的加速因子，提高敏感度
+
+        if max_af is None:
+            if volatility > 0.4:
+                max_af = 0.15  # 降低最大加速因子
+            elif volatility > 0.25:
+                max_af = 0.2   # 標準參數
+            else:
+                max_af = 0.25  # 提高最大加速因子
+
+        # 改進的初始趨勢判斷
+        if len(df) < 5:
+            # 對於數據不足的情況，返回一個簡單的SAR序列
+            close_price = df['Close'].iloc[0] if not df.empty else 0
+            return pd.Series([close_price * 0.98] * len(df), index=df.index)
+
+        # 使用前5天的趨勢來判斷初始方向
+        initial_trend = 1 if df['Close'].iloc[4] > df['Close'].iloc[0] else -1
+
+        sar = []
+        if initial_trend == 1:
+            sar.append(df['Low'].iloc[:5].min())
+            ep = df['High'].iloc[:5].max()
+        else:
+            sar.append(df['High'].iloc[:5].max())
+            ep = df['Low'].iloc[:5].min()
+
+        trend = initial_trend
         af_val = af
+
         for i in range(1, len(df)):
             prev_sar = sar[-1]
-            if trend == 1:
+
+            if trend == 1:  # 上升趨勢
                 sar_val = prev_sar + af_val * (ep - prev_sar)
+
+                # 防止SAR超過前兩天的最低價
+                if i >= 2:
+                    sar_val = min(sar_val, df['Low'].iloc[i-1], df['Low'].iloc[i-2])
+
                 if df['Low'].iloc[i] < sar_val:
+                    # 趨勢反轉
                     trend = -1
                     sar_val = ep
                     ep = df['Low'].iloc[i]
@@ -189,9 +269,15 @@ class IntegratedStockAnalyzer:
                     if df['High'].iloc[i] > ep:
                         ep = df['High'].iloc[i]
                         af_val = min(af_val + af, max_af)
-            else:
+            else:  # 下降趨勢
                 sar_val = prev_sar + af_val * (ep - prev_sar)
+
+                # 防止SAR低於前兩天的最高價
+                if i >= 2:
+                    sar_val = max(sar_val, df['High'].iloc[i-1], df['High'].iloc[i-2])
+
                 if df['High'].iloc[i] > sar_val:
+                    # 趨勢反轉
                     trend = 1
                     sar_val = ep
                     ep = df['High'].iloc[i]
@@ -200,8 +286,417 @@ class IntegratedStockAnalyzer:
                     if df['Low'].iloc[i] < ep:
                         ep = df['Low'].iloc[i]
                         af_val = min(af_val + af, max_af)
+
             sar.append(sar_val)
-        return pd.Series(sar, index=df.index)
+
+        # 確保返回的SAR序列沒有無效值
+        sar_series = pd.Series(sar, index=df.index)
+
+        # 處理可能的無效值
+        sar_series = sar_series.ffill()  # 前向填充
+        sar_series = sar_series.fillna(df['Close'])     # 如果還有NaN，用收盤價填充
+
+        # 確保SAR值在合理範圍內（不能是負數或過大）
+        sar_series = sar_series.clip(lower=df['Close'].min() * 0.5, upper=df['Close'].max() * 1.5)
+
+        return sar_series
+
+    def analyze_market_sentiment(self):
+        """
+        分析整體市場情緒
+        使用SPY、QQQ、VIX等指標
+        """
+        try:
+            # 獲取市場指標數據
+            spy_data = yf.download('SPY', period='30d', progress=False)
+            qqq_data = yf.download('QQQ', period='30d', progress=False)
+            vix_data = yf.download('^VIX', period='30d', progress=False)
+
+            if spy_data.empty or qqq_data.empty:
+                return {'sentiment': 'neutral', 'score': 50, 'factors': ['數據不足']}
+
+            sentiment_score = 50  # 基準分數
+            factors = []
+
+            # SPY趨勢分析
+            spy_ma5 = spy_data['Close'].rolling(5).mean().iloc[-1]
+            spy_ma20 = spy_data['Close'].rolling(20).mean().iloc[-1]
+            spy_current = spy_data['Close'].iloc[-1]
+
+            if spy_current > spy_ma5 > spy_ma20:
+                sentiment_score += 15
+                factors.append("SPY多頭排列")
+            elif spy_current < spy_ma5 < spy_ma20:
+                sentiment_score -= 15
+                factors.append("SPY空頭排列")
+
+            # QQQ科技股趨勢
+            qqq_ma5 = qqq_data['Close'].rolling(5).mean().iloc[-1]
+            qqq_ma20 = qqq_data['Close'].rolling(20).mean().iloc[-1]
+            qqq_current = qqq_data['Close'].iloc[-1]
+
+            if qqq_current > qqq_ma5 > qqq_ma20:
+                sentiment_score += 10
+                factors.append("科技股強勢")
+            elif qqq_current < qqq_ma5 < qqq_ma20:
+                sentiment_score -= 10
+                factors.append("科技股弱勢")
+
+            # VIX恐慌指數分析
+            if not vix_data.empty:
+                vix_current = vix_data['Close'].iloc[-1]
+                vix_ma10 = vix_data['Close'].rolling(10).mean().iloc[-1]
+
+                if vix_current < 20:
+                    sentiment_score += 10
+                    factors.append("VIX低位，市場樂觀")
+                elif vix_current > 30:
+                    sentiment_score -= 15
+                    factors.append("VIX高位，市場恐慌")
+
+                if vix_current < vix_ma10:
+                    sentiment_score += 5
+                    factors.append("VIX下降趨勢")
+
+            # 近期波動性分析
+            spy_volatility = spy_data['Close'].pct_change().std() * np.sqrt(252)
+            if spy_volatility < 0.15:
+                sentiment_score += 5
+                factors.append("市場波動性低")
+            elif spy_volatility > 0.25:
+                sentiment_score -= 10
+                factors.append("市場波動性高")
+
+            # 確定情緒等級
+            if sentiment_score >= 70:
+                sentiment = 'bullish'
+            elif sentiment_score >= 55:
+                sentiment = 'positive'
+            elif sentiment_score >= 45:
+                sentiment = 'neutral'
+            elif sentiment_score >= 30:
+                sentiment = 'negative'
+            else:
+                sentiment = 'bearish'
+
+            return {
+                'sentiment': sentiment,
+                'score': sentiment_score,
+                'factors': factors
+            }
+
+        except Exception as e:
+            return {'sentiment': 'neutral', 'score': 50, 'factors': ['分析失敗']}
+
+    def calculate_volatility_risk_score(self, df):
+        """
+        計算波動性風險評分
+        高波動性股票需要更嚴格的進場條件
+        """
+        try:
+            # 計算多種波動性指標
+            returns = df['Close'].pct_change().dropna()
+
+            # 1. 歷史波動率（年化）
+            historical_vol = returns.std() * np.sqrt(252)
+
+            # 2. 近期波動率（最近10天）
+            recent_vol = returns.tail(10).std() * np.sqrt(252)
+
+            # 3. 價格跳空分析
+            gaps = []
+            for i in range(1, len(df)):
+                gap = abs(df['Open'].iloc[i] - df['Close'].iloc[i-1]) / df['Close'].iloc[i-1]
+                gaps.append(gap)
+            avg_gap = np.mean(gaps) if gaps else 0
+
+            # 4. 日內波動率
+            intraday_vol = ((df['High'] - df['Low']) / df['Close']).mean()
+
+            # 風險評分計算
+            risk_score = 0
+            risk_factors = []
+
+            # 歷史波動率評估
+            if historical_vol > 0.4:
+                risk_score += 30
+                risk_factors.append("高歷史波動率")
+            elif historical_vol > 0.25:
+                risk_score += 15
+                risk_factors.append("中等波動率")
+            elif historical_vol < 0.15:
+                risk_score -= 10
+                risk_factors.append("低波動率")
+
+            # 近期波動率變化
+            if recent_vol > historical_vol * 1.5:
+                risk_score += 20
+                risk_factors.append("近期波動率激增")
+            elif recent_vol < historical_vol * 0.7:
+                risk_score -= 5
+                risk_factors.append("近期波動率下降")
+
+            # 跳空風險
+            if avg_gap > 0.03:
+                risk_score += 15
+                risk_factors.append("頻繁跳空")
+
+            # 日內波動
+            if intraday_vol > 0.05:
+                risk_score += 10
+                risk_factors.append("日內波動大")
+
+            # 確定風險等級
+            if risk_score >= 50:
+                risk_level = 'very_high'
+            elif risk_score >= 30:
+                risk_level = 'high'
+            elif risk_score >= 15:
+                risk_level = 'medium'
+            elif risk_score >= 0:
+                risk_level = 'low'
+            else:
+                risk_level = 'very_low'
+
+            return {
+                'risk_score': risk_score,
+                'risk_level': risk_level,
+                'historical_vol': historical_vol,
+                'recent_vol': recent_vol,
+                'avg_gap': avg_gap,
+                'intraday_vol': intraday_vol,
+                'risk_factors': risk_factors
+            }
+
+        except Exception as e:
+            return {
+                'risk_score': 25,
+                'risk_level': 'medium',
+                'historical_vol': 0.2,
+                'recent_vol': 0.2,
+                'avg_gap': 0.01,
+                'intraday_vol': 0.03,
+                'risk_factors': ['計算失敗']
+            }
+
+    def calculate_entry_timing_score(self, df):
+        """
+        計算進場時機評分
+        分析短期價格行為和動量特徵
+        """
+        try:
+            timing_score = 0
+            timing_factors = []
+
+            # 1. 短期價格結構分析
+            recent_prices = df['Close'].tail(5)
+            recent_lows = df['Low'].tail(5)
+            recent_highs = df['High'].tail(5)
+            current_price = df['Close'].iloc[-1]
+
+            # 檢查是否在近期低點附近
+            recent_low = recent_lows.min()
+            if current_price <= recent_low * 1.02:
+                timing_score += 20
+                timing_factors.append("接近近期低點")
+
+            # 檢查是否形成雙底或多重底部
+            if len(recent_lows) >= 3:
+                low_points = []
+                for i in range(1, len(recent_lows)-1):
+                    if recent_lows.iloc[i] <= recent_lows.iloc[i-1] and recent_lows.iloc[i] <= recent_lows.iloc[i+1]:
+                        low_points.append(recent_lows.iloc[i])
+
+                if len(low_points) >= 2:
+                    # 檢查是否為上升底部
+                    if low_points[-1] > low_points[0]:
+                        timing_score += 25
+                        timing_factors.append("上升底部結構")
+
+            # 2. 短期動量分析
+            momentum_1d = df['Close'].pct_change(1).iloc[-1]
+            momentum_3d = df['Close'].pct_change(3).iloc[-1]
+            momentum_5d = df['Close'].pct_change(5).iloc[-1]
+
+            # 動量轉折檢測
+            if momentum_1d > 0 and momentum_3d <= 0:
+                timing_score += 15
+                timing_factors.append("短期動量轉正")
+
+            if momentum_1d > momentum_3d > momentum_5d:
+                timing_score += 10
+                timing_factors.append("動量加速向上")
+
+            # 3. 成交量確認
+            volume_ratio = df['Volume_Ratio'].iloc[-1]
+            volume_trend = df['Volume_Ratio'].tail(3).mean()
+
+            if volume_ratio > 1.2 and momentum_1d > 0:
+                timing_score += 15
+                timing_factors.append("放量上漲")
+            elif volume_ratio > 1.5 and momentum_1d < 0:
+                timing_score -= 10
+                timing_factors.append("放量下跌")
+
+            # 4. 技術指標同步性
+            rsi_current = df['RSI'].iloc[-1]
+            rsi_prev = df['RSI'].iloc[-2] if len(df) > 1 else rsi_current
+            macd_hist_current = df['MACD_Histogram'].iloc[-1]
+            macd_hist_prev = df['MACD_Histogram'].iloc[-2] if len(df) > 1 else macd_hist_current
+
+            # RSI從超賣區反彈
+            if rsi_prev < 35 and rsi_current > 35:
+                timing_score += 20
+                timing_factors.append("RSI超賣反彈")
+
+            # MACD柱狀圖轉正
+            if macd_hist_prev <= 0 and macd_hist_current > 0:
+                timing_score += 15
+                timing_factors.append("MACD柱狀圖轉正")
+
+            # 5. 支撐位測試
+            support_levels = [
+                df['MA20'].iloc[-1],
+                df['BB_Lower'].iloc[-1],
+                df['SAR'].iloc[-1]
+            ]
+
+            for support in support_levels:
+                if pd.notna(support) and 0.98 <= current_price / support <= 1.03:
+                    timing_score += 10
+                    timing_factors.append("測試關鍵支撐位")
+                    break
+
+            # 6. 反轉K線形態
+            if len(df) >= 3:
+                # 檢查錘子線或十字星
+                body_size = abs(df['Close'].iloc[-1] - df['Open'].iloc[-1])
+                total_range = df['High'].iloc[-1] - df['Low'].iloc[-1]
+                lower_shadow = min(df['Open'].iloc[-1], df['Close'].iloc[-1]) - df['Low'].iloc[-1]
+
+                if total_range > 0:
+                    body_ratio = body_size / total_range
+                    shadow_ratio = lower_shadow / total_range
+
+                    # 錘子線：小實體，長下影線
+                    if body_ratio < 0.3 and shadow_ratio > 0.6:
+                        timing_score += 15
+                        timing_factors.append("錘子線形態")
+
+                    # 十字星：極小實體
+                    elif body_ratio < 0.1:
+                        timing_score += 10
+                        timing_factors.append("十字星形態")
+
+            return {
+                'timing_score': timing_score,
+                'timing_factors': timing_factors,
+                'momentum_1d': momentum_1d,
+                'momentum_3d': momentum_3d,
+                'volume_confirmation': volume_ratio > 1.2 and momentum_1d > 0
+            }
+
+        except Exception as e:
+            return {
+                'timing_score': 0,
+                'timing_factors': ['計算失敗'],
+                'momentum_1d': 0,
+                'momentum_3d': 0,
+                'volume_confirmation': False
+            }
+
+    def calculate_enhanced_sar_signals(self, df):
+        """
+        增強的SAR信號計算，包含確認機制
+        """
+        sar = self.calculate_sar(df)
+        df_temp = df.copy()
+        df_temp['SAR'] = sar
+
+        signals = []
+        confirmations = []
+
+        for i in range(2, len(df_temp)):
+            current_price = df_temp['Close'].iloc[i]
+            current_sar = df_temp['SAR'].iloc[i]
+            prev_price = df_temp['Close'].iloc[i-1]
+            prev_sar = df_temp['SAR'].iloc[i-1]
+
+            # 基本SAR信號
+            basic_signal = None
+            if prev_price >= prev_sar and current_price < current_sar:
+                basic_signal = 'SELL'
+            elif prev_price <= prev_sar and current_price > current_sar:
+                basic_signal = 'BUY'
+
+            # 信號確認機制
+            confirmation_score = 0
+            confirmation_factors = []
+
+            if basic_signal == 'SELL':
+                # 賣出信號確認
+                # 1. 成交量確認
+                if df_temp['Volume_Ratio'].iloc[i] > 1.2:
+                    confirmation_score += 1
+                    confirmation_factors.append("放量下跌")
+
+                # 2. RSI確認
+                if df_temp['RSI'].iloc[i] > 60:
+                    confirmation_score += 1
+                    confirmation_factors.append("RSI偏高")
+
+                # 3. MACD確認
+                if (df_temp['MACD_Histogram'].iloc[i] < df_temp['MACD_Histogram'].iloc[i-1] and
+                    df_temp['MACD_Histogram'].iloc[i] < 0):
+                    confirmation_score += 1
+                    confirmation_factors.append("MACD轉弱")
+
+                # 4. 均線確認
+                if current_price < df_temp['MA5'].iloc[i]:
+                    confirmation_score += 1
+                    confirmation_factors.append("跌破5日均線")
+
+                # 5. 連續下跌確認
+                if (current_price < prev_price and
+                    prev_price < df_temp['Close'].iloc[i-2]):
+                    confirmation_score += 1
+                    confirmation_factors.append("連續下跌")
+
+            elif basic_signal == 'BUY':
+                # 買入信號確認（雖然主要用於停損，但可作為參考）
+                # 1. 成交量確認
+                if df_temp['Volume_Ratio'].iloc[i] > 1.2:
+                    confirmation_score += 1
+                    confirmation_factors.append("放量上漲")
+
+                # 2. RSI確認
+                if 30 < df_temp['RSI'].iloc[i] < 70:
+                    confirmation_score += 1
+                    confirmation_factors.append("RSI健康")
+
+                # 3. MACD確認
+                if (df_temp['MACD_Histogram'].iloc[i] > df_temp['MACD_Histogram'].iloc[i-1] and
+                    df_temp['MACD_Histogram'].iloc[i] > 0):
+                    confirmation_score += 1
+                    confirmation_factors.append("MACD轉強")
+
+            signals.append(basic_signal)
+            confirmations.append({
+                'score': confirmation_score,
+                'factors': confirmation_factors,
+                'max_score': 5 if basic_signal == 'SELL' else 3
+            })
+
+        # 補齊前面的空值
+        signals = [None, None] + signals
+        confirmations = [{'score': 0, 'factors': [], 'max_score': 0},
+                        {'score': 0, 'factors': [], 'max_score': 0}] + confirmations
+
+        return {
+            'sar': sar,
+            'signals': signals,
+            'confirmations': confirmations
+        }
     
     def calculate_adx(self, df, period=14):
         """計算ADX趨勢強度指標"""
@@ -852,10 +1347,15 @@ class IntegratedStockAnalyzer:
                 reversal_count = sum(1 for cond in bullish_conditions if cond in reversal_conditions)
                 
                 if reversal_count >= 2:  # 要求至少2個反轉條件
+                    # 計算距離當前的天數
+                    days_ago = len(df) - 1 - i
+
                     signals.append({
                         'date': df.index[i],
                         'price': current['Close'],
                         'conditions': bullish_conditions,
+                        'signal_types': bullish_conditions,  # 添加signal_types別名
+                        'days_ago': days_ago,  # 添加days_ago字段
                         'rsi': current['RSI'],
                         'macd': current['MACD'],
                         'volume_ratio': current['Volume_Ratio'],
@@ -931,9 +1431,23 @@ class IntegratedStockAnalyzer:
         return long_signal_price, confidence
     
     def assess_entry_opportunity(self, df):
+        """
+        增強的進場機會評估
+        結合市場情緒、波動性風險和時機分析
+        """
         score = 0
         confidence_factors = []
-        
+
+        # 獲取市場情緒
+        if self.market_sentiment is None:
+            self.market_sentiment = self.analyze_market_sentiment()
+
+        # 獲取波動性風險評估
+        volatility_risk = self.calculate_volatility_risk_score(df)
+
+        # 獲取進場時機評分
+        timing_analysis = self.calculate_entry_timing_score(df)
+
         # RSI評估（修正：超買狀態大幅降低分數）
         current_rsi = df['RSI'].iloc[-1]
         if 30 <= current_rsi <= 50:
@@ -1247,13 +1761,214 @@ class IntegratedStockAnalyzer:
         
         confidence_score = max(0, min(100, base_score * 3))  # 調整分數計算
         
-        # 進場建議（修正：更嚴格的條件）
-        if score >= 12 and current_rsi < 65 and bb_position < 0.7:
+        # === 新增：市場情緒調整 ===
+        market_score = self.market_sentiment['score']
+        if market_score >= 70:
+            score += 2
+            confidence_factors.append("市場情緒樂觀")
+        elif market_score >= 55:
+            score += 1
+            confidence_factors.append("市場情緒正面")
+        elif market_score <= 30:
+            score -= 3
+            confidence_factors.append("市場情緒悲觀")
+        elif market_score <= 45:
+            score -= 1
+            confidence_factors.append("市場情緒負面")
+
+        # === 新增：波動性風險調整 ===
+        risk_level = volatility_risk['risk_level']
+        if risk_level == 'very_high':
+            score -= 4
+            confidence_factors.append("極高波動風險")
+        elif risk_level == 'high':
+            score -= 2
+            confidence_factors.append("高波動風險")
+        elif risk_level == 'very_low':
+            score += 1
+            confidence_factors.append("低波動風險")
+
+        # === 新增：時機評分調整 ===
+        timing_score = timing_analysis['timing_score']
+        if timing_score >= 50:
+            score += 3
+            confidence_factors.append("絕佳進場時機")
+        elif timing_score >= 30:
+            score += 2
+            confidence_factors.append("良好進場時機")
+        elif timing_score >= 15:
+            score += 1
+            confidence_factors.append("適當進場時機")
+        elif timing_score <= 0:
+            score -= 2
+            confidence_factors.append("進場時機不佳")
+
+        # 添加時機分析的具體因素
+        confidence_factors.extend(timing_analysis['timing_factors'])
+
+        # === 新增：強化確認機制 ===
+        try:
+            enhanced_confirmation = self.confirmation_system.calculate_comprehensive_confirmation(df)
+            confirmation_score = 0
+
+            if enhanced_confirmation and isinstance(enhanced_confirmation.get('total_score'), (int, float)):
+                confirmation_score = float(enhanced_confirmation['total_score']) / 10  # 轉換為10分制
+        except Exception as e:
+            print(f"強化確認機制錯誤: {e}")
+            enhanced_confirmation = {'total_score': 0, 'all_factors': []}
+            confirmation_score = 0
+
+        # === 新增：多時間框架分析 ===
+        symbol = getattr(self, 'current_symbol', 'UNKNOWN')
+        mtf_analysis = None
+        mtf_score = 0
+        mtf_factors = []
+
+        try:
+            mtf_analysis = self.mtf_analyzer.calculate_multi_timeframe_score(symbol)
+
+            if mtf_analysis and isinstance(mtf_analysis.get('final_score'), (int, float)):
+                mtf_score = float(mtf_analysis['final_score']) / 10  # 轉換為10分制
+                mtf_factors = mtf_analysis.get('recommendation', [])
+
+                # 根據多時間框架一致性調整評分
+                trend_consistency = mtf_analysis.get('trend_consistency', 0)
+                if isinstance(trend_consistency, (int, float)):
+                    if trend_consistency >= 0.8:
+                        mtf_score *= 1.2  # 高一致性加成
+                        mtf_factors.append("多時間框架高度一致")
+                    elif trend_consistency >= 0.6:
+                        mtf_score *= 1.1  # 中等一致性小幅加成
+                        mtf_factors.append("多時間框架較為一致")
+                    elif trend_consistency < 0.4:
+                        mtf_score *= 0.8  # 低一致性減分
+                        mtf_factors.append("多時間框架分歧較大")
+        except Exception as e:
+            print(f"多時間框架分析錯誤: {e}")
+            mtf_score = 0
+            mtf_factors = ["多時間框架分析失敗"]
+
+        # === 新增：傳統多重確認機制 ===
+        traditional_confirmation_score = 0
+        traditional_confirmation_factors = []
+
+        # 1. 多頭訊號確認
+        bullish_signals = self.detect_bullish_signals(df)
+        recent_signals = [s for s in bullish_signals if s['days_ago'] <= 5]
+        if len(recent_signals) >= 2:
+            traditional_confirmation_score += 2
+            traditional_confirmation_factors.append("多重多頭訊號確認")
+        elif len(recent_signals) >= 1:
+            traditional_confirmation_score += 1
+            traditional_confirmation_factors.append("單一多頭訊號")
+
+        # 2. 成交量確認
+        if timing_analysis.get('volume_confirmation', False):
+            traditional_confirmation_score += 2
+            traditional_confirmation_factors.append("成交量確認")
+
+        # 3. 技術指標同步確認
+        if current_rsi < 50 and df['MACD'].iloc[-1] > 0:
+            traditional_confirmation_score += 1
+            traditional_confirmation_factors.append("RSI+MACD同步")
+
+        # 4. 支撐位確認
+        current_price = df['Close'].iloc[-1]
+        long_signal_result = self.calculate_long_signal_price(df)
+
+        # 處理返回值（可能是元組或單一值）
+        if isinstance(long_signal_result, tuple):
+            long_signal_price, _ = long_signal_result
+        else:
+            long_signal_price = long_signal_result
+
+        if long_signal_price and isinstance(long_signal_price, (int, float)) and current_price <= long_signal_price * 1.05:
+            traditional_confirmation_score += 2
+            traditional_confirmation_factors.append("接近抄底價位")
+
+        # 綜合所有確認評分
+        try:
+            total_confirmation_score = (float(confirmation_score) * 0.4 +
+                                      float(mtf_score) * 0.4 +
+                                      float(traditional_confirmation_score) * 0.2)
+        except (TypeError, ValueError):
+            total_confirmation_score = 0
+
+        # 調整最終評分
+        score += total_confirmation_score
+
+        # 合併所有確認因素
+        try:
+            all_confirmation_factors = []
+
+            # 添加強化確認因素
+            if enhanced_confirmation and 'all_factors' in enhanced_confirmation:
+                enhanced_factors = enhanced_confirmation['all_factors']
+                if isinstance(enhanced_factors, list):
+                    all_confirmation_factors.extend(enhanced_factors)
+
+            # 添加多時間框架因素
+            if isinstance(mtf_factors, list):
+                all_confirmation_factors.extend(mtf_factors)
+
+            # 添加傳統確認因素
+            if isinstance(traditional_confirmation_factors, list):
+                all_confirmation_factors.extend(traditional_confirmation_factors)
+
+            confidence_factors.extend(all_confirmation_factors)
+        except Exception as e:
+            print(f"合併確認因素錯誤: {e}")
+            confidence_factors.append("確認因素合併失敗")
+
+        # 進場建議（強化版：整合多重確認機制）
+        # 基本技術條件
+        basic_conditions = current_rsi < 65 and bb_position < 0.7
+
+        # 市場環境條件
+        market_conditions = market_score >= 45  # 市場情緒不能太差
+
+        # 波動性條件
+        volatility_conditions = risk_level not in ['very_high']  # 避免極高波動
+
+        # 時機條件
+        timing_conditions = timing_score >= 10  # 時機評分不能太低
+
+        # 強化確認條件
+        enhanced_confirmation_conditions = enhanced_confirmation['total_score'] >= 60  # 強化確認評分
+
+        # 多時間框架條件
+        mtf_conditions = True
+        if mtf_analysis:
+            mtf_conditions = (mtf_analysis['final_score'] >= 20 and
+                            mtf_analysis['trend_consistency'] >= 0.5)
+
+        # 傳統確認條件
+        traditional_confirmation_conditions = traditional_confirmation_score >= 3
+
+        # 綜合確認條件（至少滿足兩個確認機制）
+        confirmation_count = sum([
+            enhanced_confirmation_conditions,
+            mtf_conditions,
+            traditional_confirmation_conditions
+        ])
+
+        comprehensive_confirmation = confirmation_count >= 2
+
+        # 分級進場建議
+        if (score >= 20 and basic_conditions and market_conditions and
+            volatility_conditions and timing_conditions and
+            enhanced_confirmation_conditions and mtf_conditions and
+            traditional_confirmation_conditions):
+            entry_advice = "極強推薦進場"
+        elif (score >= 16 and basic_conditions and market_conditions and
+              volatility_conditions and timing_conditions and comprehensive_confirmation):
             entry_advice = "強烈推薦進場"
-        elif score >= 8 and current_rsi < 70 and bb_position < 0.8:
+        elif (score >= 12 and current_rsi < 70 and bb_position < 0.8 and
+              market_conditions and timing_score >= 5 and confirmation_count >= 1):
             entry_advice = "建議進場"
-        elif score >= 4:
-            entry_advice = "觀望"
+        elif (score >= 8 and market_score >= 40 and
+              (enhanced_confirmation_conditions or traditional_confirmation_conditions)):
+            entry_advice = "謹慎觀望"
         else:
             entry_advice = "不建議進場"
         
@@ -1273,7 +1988,10 @@ class IntegratedStockAnalyzer:
     
     def analyze_stock(self, symbol):
         print(f"分析 {symbol}...")
-        
+
+        # 設置當前分析的股票符號，供其他方法使用
+        self.current_symbol = symbol
+
         # 獲取股票資訊
         stock_info = self.get_stock_info(symbol)
         
@@ -1289,7 +2007,15 @@ class IntegratedStockAnalyzer:
         
         # 確保 current_price, SAR, confidence_factors 總是存在
         current_price = df['Close'].iloc[-1] if not df.empty else None
-        current_sar = df['SAR'].iloc[-1] if 'SAR' in df.columns and not df.empty else None
+
+        # 改進SAR數據處理
+        current_sar = None
+        if 'SAR' in df.columns and not df.empty:
+            sar_value = df['SAR'].iloc[-1]
+            # 檢查SAR值是否有效（不是NaN且不是無窮大）
+            if pd.notna(sar_value) and np.isfinite(sar_value):
+                current_sar = float(sar_value)
+
         entry_advice, confidence_score, confidence_level, confidence_factors = self.assess_entry_opportunity(df)
 
         # 檢測多頭訊號
@@ -1311,6 +2037,7 @@ class IntegratedStockAnalyzer:
             'long_signal_price': long_signal_price,
             'long_signal_confidence': long_signal_confidence,
             'entry_opportunity': entry_advice,
+            'entry_advice': entry_advice,  # 添加entry_advice別名
             'confidence_score': confidence_score,
             'confidence_level': confidence_level,
         }

@@ -53,17 +53,50 @@ def preload_data(symbols, start, end):
         print("[ERROR] 下載數據失敗，請檢查網路連線或股票代號。")
         return None
 
+    failed_symbols = []
+
     for symbol in symbols:
-        if isinstance(df_all.columns, pd.MultiIndex) and symbol in df_all.columns.get_level_values(1):
-            df_symbol = df_all.xs(symbol, level=1, axis=1).copy()
-            df_symbol.dropna(subset=['Open', 'High', 'Low', 'Close'], inplace=True)
-            if not df_symbol.empty:
-                all_data[symbol] = df_symbol
-        elif symbol in df_all.columns:
-            df_symbol = df_all.copy()
-            df_symbol.dropna(subset=['Open', 'High', 'Low', 'Close'], inplace=True)
-            if not df_symbol.empty:
-                all_data[symbol] = df_symbol
+        try:
+            # 跳過無效的股票代號
+            if not symbol or symbol in ['UNKNOWN', '$UNKNOWN'] or symbol.startswith('$'):
+                failed_symbols.append(symbol)
+                continue
+
+            df_symbol = None
+
+            if isinstance(df_all.columns, pd.MultiIndex) and symbol in df_all.columns.get_level_values(1):
+                df_symbol = df_all.xs(symbol, level=1, axis=1).copy()
+            elif symbol in df_all.columns:
+                df_symbol = df_all.copy()
+
+            if df_symbol is not None:
+                df_symbol.dropna(subset=['Open', 'High', 'Low', 'Close'], inplace=True)
+
+                # 檢查數據質量
+                if not df_symbol.empty and len(df_symbol) >= 30:
+                    all_data[symbol] = df_symbol
+                else:
+                    failed_symbols.append(symbol)
+                    if df_symbol.empty:
+                        print(f"  ⚠️  {symbol}: 數據為空")
+                    else:
+                        print(f"  ⚠️  {symbol}: 數據不足 ({len(df_symbol)}天)")
+            else:
+                failed_symbols.append(symbol)
+                print(f"  ❌ {symbol}: 未找到數據")
+
+        except Exception as e:
+            failed_symbols.append(symbol)
+            print(f"  ❌ {symbol}: 處理失敗 - {str(e)}")
+
+    if failed_symbols:
+        print(f"\n{len(failed_symbols)} Failed downloads:")
+        for i, symbol in enumerate(failed_symbols):
+            if i < 10:  # 只顯示前10個失敗的
+                print(f"['{symbol}']")
+            elif i == 10:
+                print(f"... and {len(failed_symbols) - 10} more")
+                break
 
     print(f"[SUCCESS] 成功預載 {len(all_data)} 支股票的數據。")
     return all_data
@@ -111,7 +144,7 @@ class Backtester:
             if data_slice.empty or len(data_slice) < 20:
                 continue
 
-            # --- 使用 Parabolic SAR 作為移動停損 ---
+            # --- 使用增強的 Parabolic SAR 作為移動停損 ---
             # 必須先計算包含當前日在內的所有指標
             df_with_indicators = self.analyzer.calculate_technical_indicators(data_slice)
             if df_with_indicators is None or df_with_indicators.empty:
@@ -121,26 +154,55 @@ class Backtester:
             current_sar = df_with_indicators['SAR'].iloc[-1]
 
             # 1. 檢查數據有效性
-            if pd.isna(current_price) or pd.isna(current_sar):
-                print(f"   - [CRITICAL WARNING] {symbol} 在 {current_day.strftime('%Y-%m-%d')} 缺少價格或SAR數據，無法評估出場。")
+            if pd.isna(current_price) or pd.isna(current_sar) or current_sar is None:
+                print(f"   - [WARNING] {symbol} 在 {current_day.strftime('%Y-%m-%d')} 缺少價格或SAR數據，跳過SAR評估。")
+                # 如果SAR數據無效，只使用綜合模型評估
+                latest_analysis_snapshot = self.run_analysis_on_slice(symbol, data_slice)
+                if latest_analysis_snapshot:
+                    from backend.portfolio_manager import evaluate_exit_confidence
+                    exit_report = evaluate_exit_confidence(trade_info, latest_analysis_snapshot)
+
+                    if exit_report.get('exit_confidence', 0.0) >= 0.8:
+                        print(f"   - [綜合出場信號] {symbol}: 出場信心度達到 {exit_report['exit_confidence']:.2f} (>= 0.8)。")
+                        should_sell = True
                 continue
 
             should_sell = False
-            # 2. 優先執行 Parabolic SAR 移動停損檢查
-            if current_price < current_sar:
-                print(f"   - [出場信號] {symbol}: 觸發 Parabolic SAR 移動停損 (價格: {current_price:.2f} < SAR: {current_sar:.2f})。")
-                should_sell = True
-            else:
-                # 3. 若未觸發SAR停損，才執行綜合模型評估
-                # 我們需要完整的分析快照，而不僅僅是指標
-                latest_analysis_snapshot = self.run_analysis_on_slice(symbol, data_slice)
-                if not latest_analysis_snapshot:
-                    continue
 
-                exit_report = evaluate_exit_confidence(trade_info, latest_analysis_snapshot)
-                
-                if exit_report.get('exit_confidence', 0.0) >= 0.8:
-                    print(f"   - [出場信號] {symbol}: 出場信心度達到 {exit_report['exit_confidence']:.2f} (>= 0.8)。")
+            # 2. 使用智能SAR停損評估
+            latest_analysis_snapshot = self.run_analysis_on_slice(symbol, data_slice)
+            if latest_analysis_snapshot:
+                # 確保SAR數據有效後再添加到分析快照
+                if pd.notna(current_sar) and current_sar is not None:
+                    latest_analysis_snapshot['sar'] = float(current_sar)
+                else:
+                    latest_analysis_snapshot['sar'] = None
+
+                # 使用智能SAR評估
+                from backend.portfolio_manager import evaluate_smart_sar_exit
+
+                # 調試信息
+                print(f"   - [DEBUG] {symbol}: current_price={latest_analysis_snapshot.get('current_price')}, sar={latest_analysis_snapshot.get('sar')}")
+
+                sar_decision = evaluate_smart_sar_exit(trade_info, latest_analysis_snapshot)
+
+                if sar_decision['should_exit']:
+                    print(f"   - [SAR出場信號] {symbol}: {sar_decision['reason']}")
+                    print(f"     確認分數: {sar_decision['confirmation_score']}/{sar_decision['required_confirmation']}")
+                    print(f"     確認因素: {', '.join(sar_decision['confirmation_factors'])}")
+                    should_sell = True
+                else:
+                    # 3. 若未觸發SAR停損，才執行綜合模型評估
+                    from backend.portfolio_manager import evaluate_exit_confidence
+                    exit_report = evaluate_exit_confidence(trade_info, latest_analysis_snapshot)
+
+                    if exit_report.get('exit_confidence', 0.0) >= 0.8:
+                        print(f"   - [綜合出場信號] {symbol}: 出場信心度達到 {exit_report['exit_confidence']:.2f} (>= 0.8)。")
+                        should_sell = True
+            else:
+                # 如果無法獲得完整分析，回退到基本SAR檢查
+                if current_price < current_sar:
+                    print(f"   - [基本SAR出場] {symbol}: 觸發基本SAR停損 (價格: {current_price:.2f} < SAR: {current_sar:.2f})。")
                     should_sell = True
 
             if should_sell:
@@ -172,8 +234,37 @@ class Backtester:
             composite_score = analysis_result.get('composite_score', 0)
             confidence_score = analysis_result.get('confidence_score', 0)
 
-            if composite_score >= 90 and confidence_score >= 80:
+            # 動態進場閾值調整
+            market_sentiment = getattr(self.analyzer, 'market_sentiment', None)
+            if market_sentiment is None:
+                market_sentiment = self.analyzer.analyze_market_sentiment()
+                self.analyzer.market_sentiment = market_sentiment
+
+            # 根據市場情緒調整閾值
+            market_score = market_sentiment['score']
+            if market_score >= 70:
+                # 牛市環境：稍微放寬條件
+                composite_threshold = 88
+                confidence_threshold = 75
+            elif market_score >= 55:
+                # 正面環境：標準條件
+                composite_threshold = 90
+                confidence_threshold = 80
+            elif market_score >= 45:
+                # 中性環境：稍微提高條件
+                composite_threshold = 92
+                confidence_threshold = 82
+            else:
+                # 熊市環境：大幅提高條件
+                composite_threshold = 95
+                confidence_threshold = 85
+
+            # 檢查進場條件
+            if composite_score >= composite_threshold and confidence_score >= confidence_threshold:
                 print(f"   - [進場信號] {symbol}: 綜合評分 {composite_score:.2f}, 信心度 {confidence_score:.2f}")
+                print(f"     市場情緒: {market_sentiment['sentiment']} ({market_score:.0f}分)")
+                print(f"     進場閾值: 綜合≥{composite_threshold}, 信心≥{confidence_threshold}")
+
                 if next_day not in self.all_data[symbol].index:
                     print(f"   - [買入失敗] {symbol} 在 {next_day.strftime('%Y-%m-%d')} 無數據。")
                     continue
@@ -206,6 +297,11 @@ class Backtester:
 
         return {
             'symbol': symbol,
+            'current_price': current_price,
+            'rsi': df['RSI'].iloc[-1] if 'RSI' in df.columns else None,
+            'macd': df['MACD'].iloc[-1] if 'MACD' in df.columns else None,
+            'volume_ratio': df['Volume_Ratio'].iloc[-1] if 'Volume_Ratio' in df.columns else None,
+            'confidence_factors': confidence_factors,
             'composite_score': composite_score,
             'confidence_score': confidence_score,
             'trend_reversal_confirmation': df['Trend_Reversal_Confirmation'].iloc[-1],

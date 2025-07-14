@@ -28,13 +28,7 @@ interface AnalysisStatus {
   error: string | null;
 }
 
-// 股票價格介面
-interface StockPrice {
-  symbol: string;
-  price: number | null;
-  loading: boolean;
-  error: string | null;
-}
+
 
 // 新增：監控股票和交易歷史的介面
 interface MonitoredStock {
@@ -59,14 +53,14 @@ interface TradeHistory extends MonitoredStock {
 
 function App() {
   const [loading, setLoading] = useState(false);
-  const [watchlist, setWatchlist] = useState<any>(null);
+
   const [analysis, setAnalysis] = useState<any>(null);
   const [monitoredStocks, setMonitoredStocks] = useState<MonitoredStock[]>([]);
   const [tradeHistory, setTradeHistory] = useState<TradeHistory[]>([]);
   const [lastUpdate, setLastUpdate] = useState<string>("");
   const [status, setStatus] = useState<ProcessingStatus>('idle');
   const [statusMessage, setStatusMessage] = useState<string>("");
-  const [stockPrices, setStockPrices] = useState<{ [key: string]: StockPrice }>({});
+
   const [themeMode, setThemeMode] = useState<'light' | 'dark'>(getSystemTheme());
   const [analysisStatus, setAnalysisStatus] = useState<AnalysisStatus | null>(null);
   const [showDetailedProgress, setShowDetailedProgress] = useState(false);
@@ -201,85 +195,9 @@ function App() {
     pollingIntervalRef.current = setInterval(fetchAnalysisStatus, 2000);
   };
 
-  // 取得股票現價的函數
-  const fetchStockPrice = async (symbol: string) => {
-    try {
-      console.log(`Fetching price for ${symbol}...`);
-      
-      // 使用後端 API 避免 CORS 問題
-      const response = await axios.get(`/api/stock-price/${symbol}`, {
-        timeout: 10000
-      });
-      
-      console.log(`Response for ${symbol}:`, response.data);
-      
-      if (response.data?.price) {
-        const price = response.data.price;
-        console.log(`Price for ${symbol}: $${price}`);
-        return price;
-      } else {
-        console.log(`No price data found for ${symbol}`);
-        return null;
-      }
-    } catch (error) {
-      console.error(`Error fetching price for ${symbol}:`, error);
-      return null;
-    }
-  };
 
-  // 批次取得所有股票價格
-  const fetchAllStockPrices = async (symbols: string[]) => {
-    try {
-      // 使用後端批次 API
-      const response = await axios.get('/api/stock-prices', {
-        timeout: 15000
-      });
-      
-      console.log('Batch price response:', response.data);
-      
-      const prices = response.data.prices || {};
-      
-      // 更新所有股票價格狀態
-      symbols.forEach(symbol => {
-        const price = prices[symbol];
-        setStockPrices(prev => ({
-          ...prev,
-          [symbol]: { 
-            symbol, 
-            price, 
-            loading: false, 
-            error: price === null ? '無法取得價格' : null 
-          }
-        }));
-      });
-      
-    } catch (error) {
-      console.error('Error fetching batch prices:', error);
-      
-      // 如果批次 API 失敗，回退到個別 API 呼叫
-      const pricePromises = symbols.map(async (symbol) => {
-        // 先設定為載入狀態
-        setStockPrices(prev => ({
-          ...prev,
-          [symbol]: { symbol, price: null, loading: true, error: null }
-        }));
 
-        const price = await fetchStockPrice(symbol);
-        
-        setStockPrices(prev => ({
-          ...prev,
-          [symbol]: { 
-            symbol, 
-            price, 
-            loading: false, 
-            error: price === null ? '無法取得價格' : null 
-          }
-        }));
-      });
 
-      await Promise.all(pricePromises);
-    }
-  };
 
   const fetchData = async () => {
     setLoading(true);
@@ -287,13 +205,11 @@ function App() {
     setStatusMessage("正在獲取最新數據...");
     
     try {
-      const [w, a, monitored, history] = await Promise.all([
-        axios.get("/api/watchlist"),
+      const [a, monitored, history] = await Promise.all([
         axios.get("/api/analysis"),
         axios.get("/api/monitored-stocks"),
         axios.get("/api/trade-history"),
       ]);
-      setWatchlist(w.data);
       setAnalysis(a.data);
       setMonitoredStocks(monitored.data);
       setTradeHistory(history.data);
@@ -310,10 +226,7 @@ function App() {
         setLastUpdate(new Date().toLocaleString("zh-TW"));
       }
       
-      // 取得股票價格
-      if (w.data?.stocks) {
-        await fetchAllStockPrices(w.data.stocks);
-      }
+      // 注意：股票價格信息已包含在分析結果中，不需要額外獲取
       
       setStatus('completed');
       setStatusMessage("數據更新完成");
@@ -401,24 +314,7 @@ function App() {
     return `#${rank}`;
   };
 
-  // 格式化股價顯示
-  const formatPrice = (symbol: string) => {
-    const stockData = stockPrices[symbol];
-    
-    if (!stockData) {
-      return '$0.00';
-    }
-    
-    if (stockData.loading) {
-      return '載入中...';
-    }
-    
-    if (stockData.error || stockData.price === null) {
-      return 'N/A';
-    }
-    
-    return `$${stockData.price.toFixed(2)}`;
-  };
+
 
   const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
     setCurrentTab(newValue);
@@ -438,7 +334,7 @@ function App() {
           Bull Put Spread 選股神器
         </Typography>
         <Typography variant="subtitle1" gutterBottom>
-          每日自動獲取美股選擇權交易量前50名，並自動分析被低估且趨勢反轉向上的股票
+          自動分析被低估且趨勢反轉向上的股票，提供精準的抄底時機
         </Typography>
         
         {/* 狀態顯示區域 */}
@@ -538,7 +434,6 @@ function App() {
                 <Tab label="分析結果摘要" />
                 <Tab label={`股票監控清單 (${monitoredStocks.length})`} />
                 <Tab label={`歷史交易紀錄 (${tradeHistory.length})`} />
-                <Tab label="熱門股票" />
             </Tabs>
         </Box>
 
@@ -547,7 +442,6 @@ function App() {
             {currentTab === 0 && <AnalysisResultTab analysis={analysis} getRankColor={getRankColor} getRankIcon={getRankIcon} />}
             {currentTab === 1 && <MonitoredStocksTab stocks={monitoredStocks} />}
             {currentTab === 2 && <TradeHistoryTab trades={tradeHistory} />}
-            {currentTab === 3 && <WatchlistTab watchlist={watchlist} formatPrice={formatPrice} getRankColor={getRankColor} getRankIcon={getRankIcon} />}
         </Box>
 
       </Container>
@@ -875,30 +769,6 @@ const ExitReasonModal = ({ trade, open, handleClose }: { trade: TradeHistory | n
     );
 };
 
-// 新元件：原始觀察池
-const WatchlistTab = ({ watchlist, formatPrice, getRankColor, getRankIcon }: any) => (
-    <>
-        {/* <Typography variant="h6" sx={{ fontWeight: 'bold' }}>今日選擇權交易量前50大股票</Typography> */}
-        {watchlist?.stocks ? (
-            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, 1fr)', md: 'repeat(4, 1fr)', lg: 'repeat(5, 1fr)', xl: 'repeat(6, 1fr)' }, gap: 2 }}>
-                {watchlist.stocks.map((symbol: string, index: number) => (
-                    <Card key={symbol} elevation={2} sx={{ height: '100%', transition: 'all 0.3s', '&:hover': { transform: 'translateY(-2px)', boxShadow: 6 } }}>
-                        <CardContent sx={{ p: 2, textAlign: 'center' }}>
-                            <Box sx={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 40, height: 40, borderRadius: '50%', bgcolor: getRankColor(index + 1), color: index < 3 ? 'black' : 'white', fontWeight: 'bold', mb: 1 }}>
-                                {getRankIcon(index + 1)}
-                            </Box>
-                            <Typography variant="h6" component="div" sx={{ fontWeight: 'bold', color: 'primary.main', mb: 1, fontSize: '1rem' }}>
-                                {symbol}
-                            </Typography>
-                            <Typography variant="body2" color="text.secondary">
-                                {formatPrice(symbol)}
-                            </Typography>
-                        </CardContent>
-                    </Card>
-                ))}
-            </Box>
-        ) : <Alert severity="info">尚無股票數據，請點擊「立即更新」開始分析</Alert>}
-    </>
-);
+
 
 export default App;
