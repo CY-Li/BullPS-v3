@@ -34,27 +34,60 @@ class PathManager:
             "zeabur" in os.environ.get("HOSTNAME", "").lower()
         )
 
+        # 檢查是否強制使用備份目錄
+        force_backup = os.environ.get("BULLPS_FORCE_BACKUP_DIR") == "true"
+
         if is_container:
-            # 容器環境：統一使用 /app 根目錄
-            data_dir = Path("/app")
-            print(f"📁 容器環境使用根目錄: {data_dir}")
+            # 在 Zeabur 環境或強制使用備份目錄時，直接使用備份目錄
+            if is_zeabur or force_backup:
+                data_dir = Path("/tmp/bullps_data")
+                print(f"📁 Zeabur/強制備份環境使用備份目錄: {data_dir}")
 
-            # 在 Zeabur 環境中嘗試修復權限
-            if is_zeabur:
-                print("🔧 檢測到 Zeabur 環境，嘗試修復權限...")
-                self._fix_zeabur_permissions(data_dir)
+                # 確保備份目錄存在
+                try:
+                    data_dir.mkdir(parents=True, exist_ok=True)
+                    data_dir.chmod(0o777)
+                    print(f"✅ 備份目錄創建成功: {data_dir}")
+                except Exception as e:
+                    print(f"⚠️ 創建備份目錄失敗: {e}")
+            else:
+                # 其他容器環境：嘗試使用 /app 根目錄，失敗則切換到備份目錄
+                data_dir = Path("/app")
+                print(f"📁 容器環境嘗試使用根目錄: {data_dir}")
+
+                # 測試是否可寫
+                try:
+                    test_file = data_dir / "write_test.tmp"
+                    test_file.write_text("test")
+                    test_file.unlink()
+                    print(f"✅ 根目錄可寫: {data_dir}")
+                except Exception as e:
+                    print(f"⚠️ 根目錄不可寫: {e}")
+                    print(f"🔄 切換到備份目錄")
+                    data_dir = Path("/tmp/bullps_data")
+                    try:
+                        data_dir.mkdir(parents=True, exist_ok=True)
+                        data_dir.chmod(0o777)
+                        print(f"✅ 備份目錄創建成功: {data_dir}")
+                    except Exception as backup_e:
+                        print(f"❌ 創建備份目錄也失敗: {backup_e}")
         else:
-            # 本地環境：使用項目根目錄
-            data_dir = self.base_dir
-            print(f"📁 本地環境使用根目錄: {data_dir}")
+            # 本地環境：檢查是否有 data 目錄，如果有則使用，否則使用項目根目錄
+            local_data_dir = self.base_dir / "data"
+            if local_data_dir.exists() or os.environ.get("BULLPS_USE_LOCAL_DATA_DIR") == "true":
+                data_dir = local_data_dir
+                print(f"📁 本地環境使用 data 目錄: {data_dir}")
 
-        # 確保目錄存在且可寫
-        try:
-            # 根目錄已經存在，只需檢查權限
-            print(f"Using root directory: {data_dir}")
-        except PermissionError:
-            print(f"Cannot access root directory {data_dir}, attempting to fix permissions")
-            self._fix_zeabur_permissions(data_dir)
+                # 確保 data 目錄存在
+                try:
+                    data_dir.mkdir(parents=True, exist_ok=True)
+                    print(f"✅ 本地 data 目錄創建成功: {data_dir}")
+                except Exception as e:
+                    print(f"⚠️ 創建本地 data 目錄失敗: {e}")
+            else:
+                # 使用項目根目錄
+                data_dir = self.base_dir
+                print(f"📁 本地環境使用根目錄: {data_dir}")
 
         return data_dir
 

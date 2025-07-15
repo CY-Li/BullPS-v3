@@ -56,6 +56,7 @@ ENV PYTHONPATH=/app
 ENV ASGI_APPLICATION=backend.main:app
 ENV CONTAINER_ENV=true
 ENV BULLPS_BACKUP_DIR=/tmp/bullps_data
+ENV BULLPS_FORCE_BACKUP_DIR=false
 
 # 創建用戶並設置權限
 RUN useradd -m appuser && \

@@ -23,19 +23,64 @@ def get_unified_data_dir():
          os.path.exists("/proc/1/cgroup"))
     )
 
-    if is_container:
-        # 容器環境：統一使用 /app 根目錄
-        data_dir = Path("/app")
-    else:
-        # 本地環境：使用項目根目錄
-        base_dir = Path(__file__).parent.parent
-        data_dir = base_dir
+    # 檢測 Zeabur 環境
+    is_zeabur = (
+        os.environ.get("ZEABUR") == "1" or
+        "zeabur" in os.environ.get("HOSTNAME", "").lower()
+    )
 
-    # 確保目錄可訪問
-    try:
-        print(f"Using unified root directory: {data_dir}")
-    except PermissionError:
-        print(f"Cannot access root directory {data_dir}, using read-only access")
+    # 檢查是否強制使用備份目錄
+    force_backup = os.environ.get("BULLPS_FORCE_BACKUP_DIR") == "true"
+
+    if is_container:
+        # 在 Zeabur 環境或強制使用備份目錄時，直接使用備份目錄
+        if is_zeabur or force_backup:
+            data_dir = Path("/tmp/bullps_data")
+            print(f"Using backup directory for Zeabur/forced backup: {data_dir}")
+
+            # 確保備份目錄存在
+            try:
+                data_dir.mkdir(parents=True, exist_ok=True)
+                os.chmod(str(data_dir), 0o777)
+            except Exception as e:
+                print(f"Warning: Cannot create backup directory: {e}")
+        else:
+            # 其他容器環境：嘗試使用 /app 根目錄，失敗則切換到備份目錄
+            data_dir = Path("/app")
+
+            # 測試是否可寫
+            try:
+                test_file = data_dir / "write_test.tmp"
+                test_file.write_text("test")
+                test_file.unlink()
+                print(f"Using unified root directory: {data_dir}")
+            except Exception:
+                print(f"Root directory not writable, switching to backup directory")
+                data_dir = Path("/tmp/bullps_data")
+                try:
+                    data_dir.mkdir(parents=True, exist_ok=True)
+                    os.chmod(str(data_dir), 0o777)
+                    print(f"Using backup directory: {data_dir}")
+                except Exception as e:
+                    print(f"Warning: Cannot create backup directory: {e}")
+    else:
+        # 本地環境：檢查是否有 data 目錄，如果有則使用，否則使用項目根目錄
+        base_dir = Path(__file__).parent.parent
+        local_data_dir = base_dir / "data"
+
+        if local_data_dir.exists() or os.environ.get("BULLPS_USE_LOCAL_DATA_DIR") == "true":
+            data_dir = local_data_dir
+            print(f"Using local data directory: {data_dir}")
+
+            # 確保 data 目錄存在
+            try:
+                os.makedirs(str(data_dir), exist_ok=True)
+            except Exception as e:
+                print(f"Warning: Cannot create local data directory: {e}")
+        else:
+            # 使用項目根目錄
+            data_dir = base_dir
+            print(f"Using unified root directory: {data_dir}")
 
     return data_dir
 
