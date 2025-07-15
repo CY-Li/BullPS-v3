@@ -11,96 +11,54 @@ from pathlib import Path
 
 class PathManager:
     """統一管理所有數據文件的路徑"""
-    
+
     def __init__(self):
         self.base_dir = Path(__file__).parent.parent
+        self.data_dir = self._get_unified_data_dir()
         self._paths = {}
         self._initialize_paths()
-    
+
+    def _get_unified_data_dir(self):
+        """獲取統一的數據目錄"""
+        # 更準確的容器環境檢測
+        is_container = (
+            Path("/app").exists() and
+            os.environ.get("CONTAINER_ENV") == "true" or
+            os.environ.get("PORT") is not None or  # Zeabur/容器通常設置 PORT 環境變數
+            Path("/proc/1/cgroup").exists()  # Linux 容器特徵
+        )
+
+        if is_container:
+            # 容器環境：使用 /app/data
+            data_dir = Path("/app/data")
+        else:
+            # 本地環境：使用項目根目錄下的 data
+            data_dir = self.base_dir / "data"
+
+        # 確保數據目錄存在
+        try:
+            data_dir.mkdir(parents=True, exist_ok=True)
+            print(f"Using unified data directory: {data_dir}")
+        except PermissionError:
+            print(f"Cannot create data directory {data_dir}, using read-only access")
+
+        return data_dir
+
     def _initialize_paths(self):
         """初始化所有文件路徑"""
         files = {
-            "analysis_result.json": self._get_analysis_result_path(),
-            "monitored_stocks.json": self._get_monitored_stocks_path(),
-            "trade_history.json": self._get_trade_history_path()
+            "analysis_result.json": self.data_dir / "analysis_result.json",
+            "monitored_stocks.json": self.data_dir / "monitored_stocks.json",
+            "trade_history.json": self.data_dir / "trade_history.json"
         }
-        
+
         for filename, path in files.items():
             self._paths[filename] = path
             self._ensure_file_exists(path, filename)
     
-    def _get_analysis_result_path(self):
-        """獲取分析結果文件路徑"""
-        possible_paths = [
-            Path("/app/backend/analysis_result.json"),  # 優先檢查 backend 目錄
-            Path("/app/analysis_result.json"),
-            Path("/app/data/analysis_result.json"),
-            self.base_dir / "analysis_result.json"
-        ]
 
-        return self._find_existing_or_default(possible_paths, "analysis_result.json")
     
-    def _get_monitored_stocks_path(self):
-        """獲取監控股票文件路徑"""
-        possible_paths = [
-            Path("/app/backend/monitored_stocks.json"),  # 優先檢查 backend 目錄
-            self.base_dir / "backend" / "monitored_stocks.json",
-            Path("/app/data/monitored_stocks.json"),
-            Path("/app/monitored_stocks.json")
-        ]
 
-        return self._find_existing_or_default(possible_paths, "monitored_stocks.json")
-    
-    def _get_trade_history_path(self):
-        """獲取交易歷史文件路徑"""
-        possible_paths = [
-            Path("/app/backend/trade_history.json"),  # 優先檢查 backend 目錄
-            self.base_dir / "backend" / "trade_history.json",
-            Path("/app/data/trade_history.json"),
-            Path("/app/trade_history.json")
-        ]
-
-        return self._find_existing_or_default(possible_paths, "trade_history.json")
-    
-    def _find_existing_or_default(self, possible_paths, filename):
-        """查找現有文件或返回默認路徑"""
-        # 首先查找有數據的現有文件（大於 100 bytes）
-        best_path = None
-        best_size = 0
-
-        for path in possible_paths:
-            if path.exists():
-                try:
-                    size = path.stat().st_size
-                    print(f"Found {filename} at: {path} ({size} bytes)")
-
-                    # 優先選擇有實際數據的文件（大於 100 bytes）
-                    if size > 100 and size > best_size:
-                        best_path = path
-                        best_size = size
-                except Exception as e:
-                    print(f"Error checking {path}: {e}")
-
-        if best_path:
-            print(f"Selected best {filename} at: {best_path} ({best_size} bytes)")
-            return best_path
-
-        # 如果沒有找到有數據的文件，查找任何存在的文件
-        for path in possible_paths:
-            if path.exists():
-                print(f"Using existing {filename} at: {path} (fallback)")
-                return path
-
-        # 如果都不存在，使用默認路徑
-        if Path("/app/data").exists():
-            default_path = Path("/app/data") / filename
-        elif filename == "analysis_result.json":
-            default_path = self.base_dir / filename
-        else:
-            default_path = self.base_dir / "backend" / filename
-
-        print(f"Using default path for {filename}: {default_path}")
-        return default_path
     
     def _ensure_file_exists(self, path, filename):
         """確保文件存在，如果不存在則創建空文件"""
@@ -150,58 +108,8 @@ class PathManager:
     
     def sync_files(self):
         """同步文件到所有可能的位置（用於兼容性）"""
-        # 檢查是否在容器環境中
-        is_container = Path("/app").exists()
-
-        for filename, primary_path in self._paths.items():
-            if not primary_path.exists():
-                continue
-
-            try:
-                with open(primary_path, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-
-                # 根據環境選擇同步位置
-                sync_paths = []
-                if is_container:
-                    # 容器環境：只同步到可寫位置
-                    if filename == "analysis_result.json":
-                        sync_paths = [Path("/app/analysis_result.json")]
-                    # 對於其他文件，如果主路徑已經在 /app/backend/，則不需要同步
-                    elif str(primary_path).startswith("/app/backend/"):
-                        sync_paths = []  # 已經在正確位置
-                    else:
-                        # 嘗試同步到 /app/backend/（如果可寫）
-                        if filename == "monitored_stocks.json":
-                            sync_paths = [Path("/app/backend/monitored_stocks.json")]
-                        elif filename == "trade_history.json":
-                            sync_paths = [Path("/app/backend/trade_history.json")]
-                else:
-                    # 本地環境：同步到所有位置
-                    if filename == "analysis_result.json":
-                        sync_paths = [
-                            Path("analysis_result.json"),
-                            Path("backend/analysis_result.json")
-                        ]
-                    elif filename == "monitored_stocks.json":
-                        sync_paths = [Path("backend/monitored_stocks.json")]
-                    elif filename == "trade_history.json":
-                        sync_paths = [Path("backend/trade_history.json")]
-
-                for sync_path in sync_paths:
-                    if sync_path != primary_path:
-                        try:
-                            sync_path.parent.mkdir(parents=True, exist_ok=True)
-                            with open(sync_path, 'w', encoding='utf-8') as f:
-                                json.dump(data, f, indent=2, ensure_ascii=False)
-                            print(f"Successfully synced {filename} to {sync_path}")
-                        except (PermissionError, OSError) as e:
-                            print(f"Cannot sync {filename} to {sync_path} (read-only): {e}")
-                        except Exception as e:
-                            print(f"Failed to sync {filename} to {sync_path}: {e}")
-
-            except Exception as e:
-                print(f"Failed to read {filename} for syncing: {e}")
+        print("Using unified data directory - no sync needed")
+        # 統一路徑後不需要同步，所有組件都使用相同的文件位置
     
     def get_info(self):
         """獲取路徑管理器的信息"""

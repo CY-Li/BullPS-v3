@@ -87,22 +87,37 @@ def ensure_json_file_exists(file_path, default_content):
     try:
         if not file_path.exists():
             logger.warning(f"File not found at {file_path}, creating with default content")
-            file_path.write_text(json.dumps(default_content), encoding='utf-8')
+            try:
+                file_path.write_text(json.dumps(default_content), encoding='utf-8')
+            except (PermissionError, OSError) as e:
+                logger.error(f"Cannot create file {file_path}: {e}")
+                return
         else:
             # 檢查文件是否為有效 JSON
             content = file_path.read_text(encoding='utf-8').strip()
             if not content:
                 logger.warning(f"File {file_path} is empty, initializing with default content")
-                file_path.write_text(json.dumps(default_content), encoding='utf-8')
+                try:
+                    file_path.write_text(json.dumps(default_content), encoding='utf-8')
+                except (PermissionError, OSError) as e:
+                    logger.error(f"Cannot write to file {file_path}: {e}")
+                    return
             else:
                 try:
                     json.loads(content)
                 except json.JSONDecodeError:
                     logger.warning(f"File {file_path} contains invalid JSON, reinitializing")
-                    file_path.write_text(json.dumps(default_content), encoding='utf-8')
+                    try:
+                        file_path.write_text(json.dumps(default_content), encoding='utf-8')
+                    except (PermissionError, OSError) as e:
+                        logger.error(f"Cannot write to file {file_path}: {e}")
+                        return
     except Exception as e:
         logger.error(f"Error ensuring file {file_path}: {e}")
-        file_path.write_text(json.dumps(default_content), encoding='utf-8')
+        try:
+            file_path.write_text(json.dumps(default_content), encoding='utf-8')
+        except (PermissionError, OSError) as write_error:
+            logger.error(f"Cannot write to file {file_path}: {write_error}")
 
 # 初始化所有必要的 JSON 文件
 ensure_json_file_exists(ANALYSIS_PATH, {"result": []})
@@ -345,6 +360,9 @@ def get_analysis():
                 ANALYSIS_PATH.write_text(json.dumps(empty_result), encoding='utf-8')
                 logger.info(f"Created empty analysis file at: {ANALYSIS_PATH}")
                 return empty_result
+            except (PermissionError, OSError) as create_error:
+                logger.error(f"Permission denied creating analysis file: {create_error}")
+                return {"result": [], "error": "Analysis file not found and permission denied to create"}
             except Exception as create_error:
                 logger.error(f"Failed to create analysis file: {create_error}")
                 return {"result": [], "error": "Analysis file not found and could not be created"}
@@ -366,7 +384,10 @@ def get_monitored_stocks():
             if not content:
                 # 文件為空，創建空數組
                 logger.warning("monitored_stocks.json is empty, initializing with empty array")
-                MONITORED_STOCKS_PATH.write_text("[]", encoding='utf-8')
+                try:
+                    MONITORED_STOCKS_PATH.write_text("[]", encoding='utf-8')
+                except (PermissionError, OSError) as e:
+                    logger.error(f"Cannot write to monitored_stocks.json: {e}")
                 return []
 
             data = json.loads(content)
@@ -374,12 +395,18 @@ def get_monitored_stocks():
         else:
             # 文件不存在，創建空數組
             logger.warning("monitored_stocks.json does not exist, creating with empty array")
-            MONITORED_STOCKS_PATH.write_text("[]", encoding='utf-8')
+            try:
+                MONITORED_STOCKS_PATH.write_text("[]", encoding='utf-8')
+            except (PermissionError, OSError) as e:
+                logger.error(f"Cannot create monitored_stocks.json: {e}")
             return []
     except json.JSONDecodeError as e:
         logger.error(f"JSON decode error in monitored stocks: {e}")
         # JSON 格式錯誤，重新初始化為空數組
-        MONITORED_STOCKS_PATH.write_text("[]", encoding='utf-8')
+        try:
+            MONITORED_STOCKS_PATH.write_text("[]", encoding='utf-8')
+        except (PermissionError, OSError) as write_error:
+            logger.error(f"Cannot write to monitored_stocks.json: {write_error}")
         return []
     except Exception as e:
         logger.error(f"Error reading monitored stocks: {e}")
@@ -400,6 +427,95 @@ def get_trade_history():
         return JSONResponse(
             status_code=500,
             content={"error": "Failed to read trade history"}
+        )
+
+@app.post("/api/fix-permissions")
+def fix_permissions():
+    """修復數據文件權限（用於 Zeabur 部署後的權限問題）"""
+    try:
+        import stat
+
+        results = []
+        files_to_fix = [ANALYSIS_PATH, MONITORED_STOCKS_PATH, TRADE_HISTORY_PATH]
+
+        for file_path in files_to_fix:
+            if file_path.exists():
+                try:
+                    # 檢查當前權限
+                    current_stat = file_path.stat()
+                    current_mode = stat.filemode(current_stat.st_mode)
+
+                    # 嘗試修復權限（設為可讀寫）
+                    file_path.chmod(0o664)
+
+                    results.append({
+                        "file": str(file_path),
+                        "status": "success",
+                        "previous_mode": current_mode,
+                        "new_mode": "rw-rw-r--",
+                        "message": "權限修復成功"
+                    })
+
+                except PermissionError as e:
+                    results.append({
+                        "file": str(file_path),
+                        "status": "permission_denied",
+                        "error": str(e),
+                        "message": "權限不足，無法修復"
+                    })
+                except Exception as e:
+                    results.append({
+                        "file": str(file_path),
+                        "status": "error",
+                        "error": str(e),
+                        "message": "修復失敗"
+                    })
+            else:
+                results.append({
+                    "file": str(file_path),
+                    "status": "not_found",
+                    "message": "文件不存在"
+                })
+
+        # 測試寫入權限
+        test_results = []
+        for file_path in files_to_fix:
+            if file_path.exists():
+                try:
+                    # 嘗試寫入測試
+                    content = file_path.read_text(encoding='utf-8')
+                    file_path.write_text(content, encoding='utf-8')
+                    test_results.append({
+                        "file": str(file_path),
+                        "writable": True,
+                        "message": "寫入測試成功"
+                    })
+                except Exception as e:
+                    test_results.append({
+                        "file": str(file_path),
+                        "writable": False,
+                        "error": str(e),
+                        "message": "寫入測試失敗"
+                    })
+
+        return {
+            "status": "completed",
+            "timestamp": datetime.now(TZ_TAIPEI).isoformat(),
+            "permission_fixes": results,
+            "write_tests": test_results,
+            "summary": {
+                "total_files": len(files_to_fix),
+                "fixed": len([r for r in results if r["status"] == "success"]),
+                "failed": len([r for r in results if r["status"] != "success"]),
+                "writable": len([t for t in test_results if t["writable"]])
+            }
+        }
+
+    except Exception as e:
+        logger.error(f"Error in fix_permissions: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"權限修復失敗: {str(e)}"}
         )
 
 

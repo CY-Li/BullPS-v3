@@ -2320,41 +2320,38 @@ def main():
         
         # 使用統一的路徑管理器保存分析結果
         try:
-            from backend.path_manager import get_analysis_path, sync_all_files
+            from backend.path_manager import get_analysis_path
             analysis_path = get_analysis_path()
+            print(f"使用統一分析結果文件路徑: {analysis_path}")
         except ImportError:
-            # 回退到本地路徑
-            analysis_path = Path("analysis_result.json")
+            # 回退到統一數據目錄
+            if Path("/app").exists():
+                analysis_path = Path("/app/data/analysis_result.json")
+            else:
+                analysis_path = Path("data/analysis_result.json")
+            print(f"使用回退分析結果文件路徑: {analysis_path}")
 
-        analysis_path.parent.mkdir(parents=True, exist_ok=True)
-
-        with open(analysis_path, 'w', encoding='utf-8') as f:
-            json.dump(analysis_result, f, indent=2, ensure_ascii=False, cls=NpEncoder)
-        print(f"分析結果已儲存至 {analysis_path}")
-
-        # 同步到所有兼容位置（忽略只讀文件系統錯誤）
+        # 確保目錄存在
         try:
-            sync_all_files()
-            print("已同步分析結果到所有兼容位置")
-        except Exception as e:
-            print(f"同步文件時發生錯誤（這在只讀環境中是正常的）: {e}")
-            # 手動創建副本作為回退（僅在可寫位置）
-            backup_paths = [
-                Path("analysis_result.json"),
-                Path("backend/analysis_result.json")
-            ]
+            analysis_path.parent.mkdir(parents=True, exist_ok=True)
+        except PermissionError:
+            print(f"無法創建目錄 {analysis_path.parent}，使用現有路徑")
 
-            for backup_path in backup_paths:
-                if backup_path != analysis_path:
-                    try:
-                        backup_path.parent.mkdir(parents=True, exist_ok=True)
-                        with open(backup_path, 'w', encoding='utf-8') as f:
-                            json.dump(analysis_result, f, indent=2, ensure_ascii=False, cls=NpEncoder)
-                        print(f"分析結果副本已儲存至 {backup_path}")
-                    except (PermissionError, OSError) as backup_error:
-                        print(f"無法創建副本 {backup_path}（只讀文件系統）: {backup_error}")
-                    except Exception as backup_error:
-                        print(f"無法創建副本 {backup_path}: {backup_error}")
+        # 保存分析結果
+        try:
+            with open(analysis_path, 'w', encoding='utf-8') as f:
+                json.dump(analysis_result, f, indent=2, ensure_ascii=False, cls=NpEncoder)
+            print(f"✅ 分析結果已儲存至統一路徑: {analysis_path}")
+        except (PermissionError, OSError) as e:
+            print(f"❌ 無法寫入分析結果文件: {e}")
+            # 嘗試寫入到當前目錄作為回退
+            fallback_path = Path("analysis_result.json")
+            try:
+                with open(fallback_path, 'w', encoding='utf-8') as f:
+                    json.dump(analysis_result, f, indent=2, ensure_ascii=False, cls=NpEncoder)
+                print(f"✅ 分析結果已儲存至回退路徑: {fallback_path}")
+            except Exception as fallback_error:
+                print(f"❌ 回退保存也失敗: {fallback_error}")
 
     # 新增：更新股票監控清單
     print("\n開始更新股票監控清單...")
@@ -2363,11 +2360,14 @@ def main():
     try:
         from backend.path_manager import get_monitored_stocks_path
         MONITORED_STOCKS_PATH = get_monitored_stocks_path()
+        print(f"使用統一監控股票文件路徑: {MONITORED_STOCKS_PATH}")
     except ImportError:
-        # 回退到本地路徑檢測
-        MONITORED_STOCKS_PATH = Path("backend/monitored_stocks.json")
-
-    print(f"使用監控股票文件路徑: {MONITORED_STOCKS_PATH}")
+        # 回退到統一數據目錄
+        if Path("/app").exists():
+            MONITORED_STOCKS_PATH = Path("/app/data/monitored_stocks.json")
+        else:
+            MONITORED_STOCKS_PATH = Path("data/monitored_stocks.json")
+        print(f"使用回退監控股票文件路徑: {MONITORED_STOCKS_PATH}")
     
     try:
         with open(MONITORED_STOCKS_PATH, 'r', encoding='utf-8') as f:
@@ -2409,9 +2409,16 @@ def main():
 
     if stocks_to_add:
         monitored_stocks.extend(stocks_to_add)
-        with open(MONITORED_STOCKS_PATH, 'w', encoding='utf-8') as f:
-            json.dump(monitored_stocks, f, indent=2, ensure_ascii=False)
-        print(f"成功新增 {len(stocks_to_add)} 支股票到監控清單。檔案已更新: {MONITORED_STOCKS_PATH}")
+        try:
+            with open(MONITORED_STOCKS_PATH, 'w', encoding='utf-8') as f:
+                json.dump(monitored_stocks, f, indent=2, ensure_ascii=False)
+            print(f"✅ 成功新增 {len(stocks_to_add)} 支股票到監控清單。檔案已更新: {MONITORED_STOCKS_PATH}")
+        except (PermissionError, OSError) as e:
+            print(f"❌ 無法寫入監控股票文件: {e}")
+            print(f"   文件路徑: {MONITORED_STOCKS_PATH}")
+            print(f"   請檢查文件權限或磁盤空間")
+        except Exception as e:
+            print(f"❌ 寫入監控股票文件時發生未知錯誤: {e}")
     else:
         print("本次分析無新增符合條件的股票進入監控清單。")
     

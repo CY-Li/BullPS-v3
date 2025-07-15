@@ -48,20 +48,26 @@ ENV PORT=8080
 ENV PYTHONPATH=/app
 ENV ASGI_APPLICATION=backend.main:app
 
-# 創建數據目錄並設置權限
+# 創建統一數據目錄並設置權限
 RUN mkdir -p /app/data && \
     useradd -m appuser && \
-    chmod +x /app/docker-entrypoint.sh && \
-    chown -R appuser:appuser /app && \
-    chmod -R 755 /app
+    chmod +x /app/docker-entrypoint.sh
 
-# 初始化數據文件
+# 初始化統一數據文件（在切換用戶前）
 RUN echo '[]' > /app/data/monitored_stocks.json && \
     echo '[]' > /app/data/trade_history.json && \
-    echo '{"result": []}' > /app/data/analysis_result.json && \
-    chown appuser:appuser /app/data/*.json
+    echo '{"result": [], "timestamp": "", "analysis_date": "", "total_stocks": 0, "analyzed_stocks": 0}' > /app/data/analysis_result.json
 
-USER appuser
+# 設置所有權限（確保 appuser 有完整權限）
+RUN chown -R appuser:appuser /app && \
+    chmod -R 755 /app && \
+    chmod -R 664 /app/data/*.json
+
+# 創建權限修復腳本
+RUN echo '#!/bin/bash\nchown -R appuser:appuser /app/data/ 2>/dev/null || true\nchmod -R 664 /app/data/*.json 2>/dev/null || true\nexec su appuser -c "./docker-entrypoint.sh"' > /fix-permissions.sh && \
+    chmod +x /fix-permissions.sh
+
+# 不切換用戶，讓啟動腳本處理
 
 # 健康檢查
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
@@ -70,5 +76,5 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 # 暴露端口
 EXPOSE 8080
 
-# 啟動命令
-CMD ["./docker-entrypoint.sh"]
+# 啟動命令（先修復權限再切換用戶）
+CMD ["/fix-permissions.sh"]

@@ -2,6 +2,7 @@ import json
 import os
 import sys
 from datetime import datetime
+from pathlib import Path
 import numpy as np
 
 # 將專案根目錄添加到 sys.path
@@ -12,54 +13,54 @@ from integrated_stock_analyzer import IntegratedStockAnalyzer
 # --- 常數定義 --- 
 
 # --- 常數定義 ---
-def find_file_path(filename):
-    """動態查找文件的實際位置"""
-    possible_paths = [
-        os.path.join("/app/data", filename),  # 容器數據目錄
-        os.path.join("/app", filename),       # 容器根目錄
-        os.path.join(os.path.dirname(__file__), filename),  # 當前目錄
-        os.path.join(os.path.dirname(__file__), '..', filename)  # 上級目錄
-    ]
-
-    for path in possible_paths:
-        if os.path.exists(path):
-            print(f"Found {filename} at: {path}")
-            return path
-
-    # 如果都不存在，使用默認路徑並確保目錄存在
-    if os.path.exists("/app/data"):
-        default_path = os.path.join("/app/data", filename)
-        # 確保數據目錄存在
-        os.makedirs("/app/data", exist_ok=True)
+def get_unified_data_dir():
+    """獲取統一的數據目錄"""
+    if os.path.exists("/app"):
+        # 容器環境：使用 /app/data
+        data_dir = Path("/app/data")
     else:
-        if filename == "analysis_result.json":
-            default_path = os.path.join(os.path.dirname(__file__), '..', filename)
-        else:
-            default_path = os.path.join(os.path.dirname(__file__), filename)
+        # 本地環境：使用項目根目錄下的 data
+        base_dir = Path(__file__).parent.parent
+        data_dir = base_dir / "data"
 
-    print(f"File {filename} not found, using default path: {default_path}")
+    # 確保數據目錄存在
+    try:
+        data_dir.mkdir(parents=True, exist_ok=True)
+        print(f"Using unified data directory: {data_dir}")
+    except PermissionError:
+        print(f"Cannot create data directory {data_dir}, using read-only access")
 
-    # 如果是默認路徑且文件不存在，創建空文件
-    if not os.path.exists(default_path):
+    return data_dir
+
+def get_unified_file_path(filename):
+    """獲取統一的文件路徑"""
+    data_dir = get_unified_data_dir()
+    file_path = data_dir / filename
+
+    # 如果文件不存在，創建空文件
+    if not file_path.exists():
         try:
-            os.makedirs(os.path.dirname(default_path), exist_ok=True)
             if filename == "analysis_result.json":
                 empty_data = {"result": [], "timestamp": "", "analysis_date": "", "total_stocks": 0, "analyzed_stocks": 0}
             else:
                 empty_data = []
 
-            with open(default_path, 'w', encoding='utf-8') as f:
+            with open(file_path, 'w', encoding='utf-8') as f:
                 json.dump(empty_data, f, indent=2, ensure_ascii=False)
-            print(f"Created empty file: {default_path}")
-        except Exception as e:
-            print(f"Failed to create empty file {default_path}: {e}")
+            print(f"Created empty unified file: {file_path}")
+        except (PermissionError, OSError) as e:
+            print(f"Cannot create unified file {file_path}: {e}")
 
-    return default_path
+    return str(file_path)
 
-# 動態設置文件路徑
-PORTFOLIO_FILE = find_file_path("monitored_stocks.json")
-ANALYSIS_RESULT_FILE = find_file_path("analysis_result.json")
-TRADE_HISTORY_FILE = find_file_path("trade_history.json")
+# 使用統一路徑
+PORTFOLIO_FILE = get_unified_file_path("monitored_stocks.json")
+ANALYSIS_RESULT_FILE = get_unified_file_path("analysis_result.json")
+TRADE_HISTORY_FILE = get_unified_file_path("trade_history.json")
+
+print(f"Portfolio file: {PORTFOLIO_FILE}")
+print(f"Analysis result file: {ANALYSIS_RESULT_FILE}")
+print(f"Trade history file: {TRADE_HISTORY_FILE}")
 
 # --- 策略參數 (可調整) ---
 
@@ -123,12 +124,15 @@ def save_json_file(data, file_path):
                 return [clean_nan_values(elem) for elem in obj]
             else:
                 return obj
-        
+
         cleaned_data = clean_nan_values(data)
         with open(file_path, 'w', encoding='utf-8') as f:
             json.dump(cleaned_data, f, indent=2, ensure_ascii=False, cls=NpEncoder)
-    except IOError as e:
-        print(f"儲存至 {file_path} 時發生錯誤: {e}")
+    except (PermissionError, OSError) as e:
+        print(f"❌ 儲存至 {file_path} 時發生權限錯誤: {e}")
+        print(f"   請檢查文件權限或磁盤空間")
+    except Exception as e:
+        print(f"❌ 儲存至 {file_path} 時發生未知錯誤: {e}")
 
 def get_latest_analysis(symbol):
     """從 analysis_result.json 讀取指定股票的最新分析數據"""
