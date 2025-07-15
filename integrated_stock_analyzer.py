@@ -2332,13 +2332,13 @@ def main():
             json.dump(analysis_result, f, indent=2, ensure_ascii=False, cls=NpEncoder)
         print(f"分析結果已儲存至 {analysis_path}")
 
-        # 同步到所有兼容位置
+        # 同步到所有兼容位置（忽略只讀文件系統錯誤）
         try:
             sync_all_files()
             print("已同步分析結果到所有兼容位置")
         except Exception as e:
-            print(f"同步文件時發生錯誤: {e}")
-            # 手動創建副本作為回退
+            print(f"同步文件時發生錯誤（這在只讀環境中是正常的）: {e}")
+            # 手動創建副本作為回退（僅在可寫位置）
             backup_paths = [
                 Path("analysis_result.json"),
                 Path("backend/analysis_result.json")
@@ -2351,6 +2351,8 @@ def main():
                         with open(backup_path, 'w', encoding='utf-8') as f:
                             json.dump(analysis_result, f, indent=2, ensure_ascii=False, cls=NpEncoder)
                         print(f"分析結果副本已儲存至 {backup_path}")
+                    except (PermissionError, OSError) as backup_error:
+                        print(f"無法創建副本 {backup_path}（只讀文件系統）: {backup_error}")
                     except Exception as backup_error:
                         print(f"無法創建副本 {backup_path}: {backup_error}")
 

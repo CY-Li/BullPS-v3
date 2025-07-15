@@ -150,42 +150,56 @@ class PathManager:
     
     def sync_files(self):
         """同步文件到所有可能的位置（用於兼容性）"""
+        # 檢查是否在容器環境中
+        is_container = Path("/app").exists()
+
         for filename, primary_path in self._paths.items():
             if not primary_path.exists():
                 continue
-                
+
             try:
                 with open(primary_path, 'r', encoding='utf-8') as f:
                     data = json.load(f)
-                
-                # 同步到其他位置
+
+                # 根據環境選擇同步位置
                 sync_paths = []
-                if filename == "analysis_result.json":
-                    sync_paths = [
-                        Path("/app/analysis_result.json"),
-                        Path("analysis_result.json"),
-                        Path("backend/analysis_result.json")
-                    ]
-                elif filename == "monitored_stocks.json":
-                    sync_paths = [
-                        Path("/app/backend/monitored_stocks.json"),
-                        Path("backend/monitored_stocks.json")
-                    ]
-                elif filename == "trade_history.json":
-                    sync_paths = [
-                        Path("/app/backend/trade_history.json"),
-                        Path("backend/trade_history.json")
-                    ]
-                
+                if is_container:
+                    # 容器環境：只同步到可寫位置
+                    if filename == "analysis_result.json":
+                        sync_paths = [Path("/app/analysis_result.json")]
+                    # 對於其他文件，如果主路徑已經在 /app/backend/，則不需要同步
+                    elif str(primary_path).startswith("/app/backend/"):
+                        sync_paths = []  # 已經在正確位置
+                    else:
+                        # 嘗試同步到 /app/backend/（如果可寫）
+                        if filename == "monitored_stocks.json":
+                            sync_paths = [Path("/app/backend/monitored_stocks.json")]
+                        elif filename == "trade_history.json":
+                            sync_paths = [Path("/app/backend/trade_history.json")]
+                else:
+                    # 本地環境：同步到所有位置
+                    if filename == "analysis_result.json":
+                        sync_paths = [
+                            Path("analysis_result.json"),
+                            Path("backend/analysis_result.json")
+                        ]
+                    elif filename == "monitored_stocks.json":
+                        sync_paths = [Path("backend/monitored_stocks.json")]
+                    elif filename == "trade_history.json":
+                        sync_paths = [Path("backend/trade_history.json")]
+
                 for sync_path in sync_paths:
                     if sync_path != primary_path:
                         try:
                             sync_path.parent.mkdir(parents=True, exist_ok=True)
                             with open(sync_path, 'w', encoding='utf-8') as f:
                                 json.dump(data, f, indent=2, ensure_ascii=False)
+                            print(f"Successfully synced {filename} to {sync_path}")
+                        except (PermissionError, OSError) as e:
+                            print(f"Cannot sync {filename} to {sync_path} (read-only): {e}")
                         except Exception as e:
                             print(f"Failed to sync {filename} to {sync_path}: {e}")
-                            
+
             except Exception as e:
                 print(f"Failed to read {filename} for syncing: {e}")
     
