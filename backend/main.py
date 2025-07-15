@@ -47,35 +47,15 @@ app = FastAPI(lifespan=lifespan)
 # 檔案路徑
 BASE_DIR = Path(__file__).parent.parent
 
-# 動態檢測文件路徑
-def get_file_path(filename):
-    """動態檢測文件的實際位置"""
-    # 可能的路徑列表（按優先級排序）
-    possible_paths = [
-        Path("/app/data") / filename,  # 容器數據目錄
-        Path("/app") / filename,       # 容器根目錄
-        BASE_DIR / filename,           # 本地根目錄
-        BASE_DIR / "backend" / filename  # 本地backend目錄
-    ]
-
-    for path in possible_paths:
-        if path.exists():
-            logger.info(f"Found {filename} at: {path}")
-            return path
-
-    # 如果都不存在，使用默認路徑
-    if os.path.exists("/app/data"):
-        default_path = Path("/app/data") / filename
-    else:
-        default_path = BASE_DIR / "backend" / filename if filename != "analysis_result.json" else BASE_DIR / filename
-
-    logger.warning(f"File {filename} not found, using default path: {default_path}")
-    return default_path
+# 使用統一的路徑管理器
+from backend.path_manager import path_manager
 
 # 設置文件路徑
-ANALYSIS_PATH = get_file_path("analysis_result.json")
-MONITORED_STOCKS_PATH = get_file_path("monitored_stocks.json")
-TRADE_HISTORY_PATH = get_file_path("trade_history.json")
+ANALYSIS_PATH = path_manager.get_analysis_path()
+MONITORED_STOCKS_PATH = path_manager.get_monitored_stocks_path()
+TRADE_HISTORY_PATH = path_manager.get_trade_history_path()
+
+logger.info(f"Using paths - Analysis: {ANALYSIS_PATH}, Monitored: {MONITORED_STOCKS_PATH}, Trade History: {TRADE_HISTORY_PATH}")
 
 STATIC_DIR = BASE_DIR / "frontend" / "dist"
 
@@ -225,21 +205,11 @@ def scheduled_task():
 
 @app.get("/api/health")
 def health_check():
+    path_info = path_manager.get_info()
     return {
         "status": "healthy",
         "timestamp": datetime.now(TZ_TAIPEI).isoformat(),
-        "environment": "container" if os.path.exists("/app/data") else "local",
-        "file_paths": {
-            "analysis_path": str(ANALYSIS_PATH),
-            "monitored_stocks_path": str(MONITORED_STOCKS_PATH),
-            "trade_history_path": str(TRADE_HISTORY_PATH)
-        },
-        "file_exists": {
-            "analysis_file": ANALYSIS_PATH.exists(),
-            "monitored_stocks_file": MONITORED_STOCKS_PATH.exists(),
-            "trade_history_file": TRADE_HISTORY_PATH.exists()
-        },
-        "data_dir_exists": os.path.exists("/app/data"),
+        "path_manager_info": path_info,
         "static_dir_exists": STATIC_DIR.exists(),
         "static_dir_path": str(STATIC_DIR),
         "files_in_static": os.listdir(STATIC_DIR) if STATIC_DIR.exists() else []

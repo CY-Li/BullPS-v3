@@ -2318,21 +2318,54 @@ def main():
             "result": results.to_dict('records')
         }
         
-        # 在根目錄創建
-        with open('analysis_result.json', 'w', encoding='utf-8') as f:
+        # 使用統一的路徑管理器保存分析結果
+        try:
+            from backend.path_manager import get_analysis_path, sync_all_files
+            analysis_path = get_analysis_path()
+        except ImportError:
+            # 回退到本地路徑
+            analysis_path = Path("analysis_result.json")
+
+        analysis_path.parent.mkdir(parents=True, exist_ok=True)
+
+        with open(analysis_path, 'w', encoding='utf-8') as f:
             json.dump(analysis_result, f, indent=2, ensure_ascii=False, cls=NpEncoder)
-        print(f"分析結果已儲存至 analysis_result.json")
-        
-        # 在 backend 目錄也創建一份
-        backend_path = Path("backend/analysis_result.json")
-        backend_path.parent.mkdir(exist_ok=True)
-        with open(backend_path, 'w', encoding='utf-8') as f:
-            json.dump(analysis_result, f, indent=2, ensure_ascii=False, cls=NpEncoder)
-        print(f"分析結果已儲存至 backend/analysis_result.json")
+        print(f"分析結果已儲存至 {analysis_path}")
+
+        # 同步到所有兼容位置
+        try:
+            sync_all_files()
+            print("已同步分析結果到所有兼容位置")
+        except Exception as e:
+            print(f"同步文件時發生錯誤: {e}")
+            # 手動創建副本作為回退
+            backup_paths = [
+                Path("analysis_result.json"),
+                Path("backend/analysis_result.json")
+            ]
+
+            for backup_path in backup_paths:
+                if backup_path != analysis_path:
+                    try:
+                        backup_path.parent.mkdir(parents=True, exist_ok=True)
+                        with open(backup_path, 'w', encoding='utf-8') as f:
+                            json.dump(analysis_result, f, indent=2, ensure_ascii=False, cls=NpEncoder)
+                        print(f"分析結果副本已儲存至 {backup_path}")
+                    except Exception as backup_error:
+                        print(f"無法創建副本 {backup_path}: {backup_error}")
 
     # 新增：更新股票監控清單
     print("\n開始更新股票監控清單...")
-    MONITORED_STOCKS_PATH = Path("backend/monitored_stocks.json")
+
+    # 使用統一的路徑管理器
+    try:
+        from backend.path_manager import get_monitored_stocks_path
+        MONITORED_STOCKS_PATH = get_monitored_stocks_path()
+    except ImportError:
+        # 回退到本地路徑檢測
+        MONITORED_STOCKS_PATH = Path("backend/monitored_stocks.json")
+
+    print(f"使用監控股票文件路徑: {MONITORED_STOCKS_PATH}")
     
     try:
         with open(MONITORED_STOCKS_PATH, 'r', encoding='utf-8') as f:

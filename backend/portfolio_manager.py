@@ -26,9 +26,11 @@ def find_file_path(filename):
             print(f"Found {filename} at: {path}")
             return path
 
-    # 如果都不存在，使用默認路徑
+    # 如果都不存在，使用默認路徑並確保目錄存在
     if os.path.exists("/app/data"):
         default_path = os.path.join("/app/data", filename)
+        # 確保數據目錄存在
+        os.makedirs("/app/data", exist_ok=True)
     else:
         if filename == "analysis_result.json":
             default_path = os.path.join(os.path.dirname(__file__), '..', filename)
@@ -36,6 +38,22 @@ def find_file_path(filename):
             default_path = os.path.join(os.path.dirname(__file__), filename)
 
     print(f"File {filename} not found, using default path: {default_path}")
+
+    # 如果是默認路徑且文件不存在，創建空文件
+    if not os.path.exists(default_path):
+        try:
+            os.makedirs(os.path.dirname(default_path), exist_ok=True)
+            if filename == "analysis_result.json":
+                empty_data = {"result": [], "timestamp": "", "analysis_date": "", "total_stocks": 0, "analyzed_stocks": 0}
+            else:
+                empty_data = []
+
+            with open(default_path, 'w', encoding='utf-8') as f:
+                json.dump(empty_data, f, indent=2, ensure_ascii=False)
+            print(f"Created empty file: {default_path}")
+        except Exception as e:
+            print(f"Failed to create empty file {default_path}: {e}")
+
     return default_path
 
 # 動態設置文件路徑
