@@ -455,6 +455,13 @@ const AnalysisResultTab = ({ analysis, getRankColor, getRankIcon }: any) => {
     const theme = useTheme();
     const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
+    // 調試信息
+    console.log('AnalysisResultTab - analysis:', analysis);
+    console.log('AnalysisResultTab - analysis.result length:', analysis?.result?.length);
+
+    const filteredStocks = analysis?.result?.filter((stock: any) => stock.status !== '無多頭訊號') || [];
+    console.log('AnalysisResultTab - filtered stocks length:', filteredStocks.length);
+
     return (
         <>
             {/* <Typography variant="h6" sx={{ fontWeight: 'bold', fontSize: { xs: '1.5rem', sm: '1.75rem' } }}>分析結果摘要</Typography> */}
@@ -465,7 +472,7 @@ const AnalysisResultTab = ({ analysis, getRankColor, getRankIcon }: any) => {
                         分析股票數: {analysis.analyzed_stocks}/{analysis.total_stocks}
                     </Typography> */}
                     <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: '1fr 1fr 1fr', lg: '1fr 1fr 1fr 1fr' }, gap: 2 }}>
-                        {analysis.result?.filter((stock: any) => stock.status !== '無多頭訊號').map((stock: any, index: number) => (
+                        {filteredStocks.map((stock: any, index: number) => (
                             <Card
                                     key={stock.symbol}
                                     elevation={2}

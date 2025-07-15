@@ -12,17 +12,36 @@ from integrated_stock_analyzer import IntegratedStockAnalyzer
 # --- 常數定義 --- 
 
 # --- 常數定義 ---
-# 檢查是否在容器環境中
-if os.path.exists("/app/data"):
-    # 容器環境：使用可寫的數據目錄
-    PORTFOLIO_FILE = "/app/data/monitored_stocks.json"
-    ANALYSIS_RESULT_FILE = "/app/data/analysis_result.json"
-    TRADE_HISTORY_FILE = "/app/data/trade_history.json"
-else:
-    # 本地環境：使用原始路徑
-    PORTFOLIO_FILE = os.path.join(os.path.dirname(__file__), 'monitored_stocks.json')
-    ANALYSIS_RESULT_FILE = os.path.join(os.path.dirname(__file__), '..', 'analysis_result.json')
-    TRADE_HISTORY_FILE = os.path.join(os.path.dirname(__file__), 'trade_history.json')
+def find_file_path(filename):
+    """動態查找文件的實際位置"""
+    possible_paths = [
+        os.path.join("/app/data", filename),  # 容器數據目錄
+        os.path.join("/app", filename),       # 容器根目錄
+        os.path.join(os.path.dirname(__file__), filename),  # 當前目錄
+        os.path.join(os.path.dirname(__file__), '..', filename)  # 上級目錄
+    ]
+
+    for path in possible_paths:
+        if os.path.exists(path):
+            print(f"Found {filename} at: {path}")
+            return path
+
+    # 如果都不存在，使用默認路徑
+    if os.path.exists("/app/data"):
+        default_path = os.path.join("/app/data", filename)
+    else:
+        if filename == "analysis_result.json":
+            default_path = os.path.join(os.path.dirname(__file__), '..', filename)
+        else:
+            default_path = os.path.join(os.path.dirname(__file__), filename)
+
+    print(f"File {filename} not found, using default path: {default_path}")
+    return default_path
+
+# 動態設置文件路徑
+PORTFOLIO_FILE = find_file_path("monitored_stocks.json")
+ANALYSIS_RESULT_FILE = find_file_path("analysis_result.json")
+TRADE_HISTORY_FILE = find_file_path("trade_history.json")
 
 # --- 策略參數 (可調整) ---
 

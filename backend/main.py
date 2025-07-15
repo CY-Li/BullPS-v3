@@ -47,18 +47,35 @@ app = FastAPI(lifespan=lifespan)
 # 檔案路徑
 BASE_DIR = Path(__file__).parent.parent
 
-# 檢查是否在容器環境中
-if os.path.exists("/app/data"):
-    # 容器環境：使用可寫的數據目錄
-    DATA_DIR = Path("/app/data")
-    ANALYSIS_PATH = DATA_DIR / "analysis_result.json"
-    MONITORED_STOCKS_PATH = DATA_DIR / "monitored_stocks.json"
-    TRADE_HISTORY_PATH = DATA_DIR / "trade_history.json"
-else:
-    # 本地環境：使用原始路徑
-    ANALYSIS_PATH = BASE_DIR / "analysis_result.json"
-    MONITORED_STOCKS_PATH = BASE_DIR / "backend" / "monitored_stocks.json"
-    TRADE_HISTORY_PATH = BASE_DIR / "backend" / "trade_history.json"
+# 動態檢測文件路徑
+def get_file_path(filename):
+    """動態檢測文件的實際位置"""
+    # 可能的路徑列表（按優先級排序）
+    possible_paths = [
+        Path("/app/data") / filename,  # 容器數據目錄
+        Path("/app") / filename,       # 容器根目錄
+        BASE_DIR / filename,           # 本地根目錄
+        BASE_DIR / "backend" / filename  # 本地backend目錄
+    ]
+
+    for path in possible_paths:
+        if path.exists():
+            logger.info(f"Found {filename} at: {path}")
+            return path
+
+    # 如果都不存在，使用默認路徑
+    if os.path.exists("/app/data"):
+        default_path = Path("/app/data") / filename
+    else:
+        default_path = BASE_DIR / "backend" / filename if filename != "analysis_result.json" else BASE_DIR / filename
+
+    logger.warning(f"File {filename} not found, using default path: {default_path}")
+    return default_path
+
+# 設置文件路徑
+ANALYSIS_PATH = get_file_path("analysis_result.json")
+MONITORED_STOCKS_PATH = get_file_path("monitored_stocks.json")
+TRADE_HISTORY_PATH = get_file_path("trade_history.json")
 
 STATIC_DIR = BASE_DIR / "frontend" / "dist"
 
@@ -211,6 +228,18 @@ def health_check():
     return {
         "status": "healthy",
         "timestamp": datetime.now(TZ_TAIPEI).isoformat(),
+        "environment": "container" if os.path.exists("/app/data") else "local",
+        "file_paths": {
+            "analysis_path": str(ANALYSIS_PATH),
+            "monitored_stocks_path": str(MONITORED_STOCKS_PATH),
+            "trade_history_path": str(TRADE_HISTORY_PATH)
+        },
+        "file_exists": {
+            "analysis_file": ANALYSIS_PATH.exists(),
+            "monitored_stocks_file": MONITORED_STOCKS_PATH.exists(),
+            "trade_history_file": TRADE_HISTORY_PATH.exists()
+        },
+        "data_dir_exists": os.path.exists("/app/data"),
         "static_dir_exists": STATIC_DIR.exists(),
         "static_dir_path": str(STATIC_DIR),
         "files_in_static": os.listdir(STATIC_DIR) if STATIC_DIR.exists() else []
@@ -226,7 +255,18 @@ def run_now(background_tasks: BackgroundTasks):
     """觸發立即分析"""
     if analysis_status["is_running"]:
         return {"status": "already_running", "message": "分析正在進行中"}
-    
+
+    logger.info("Manual analysis triggered via API")
+    background_tasks.add_task(run_stock_analysis)
+    return {"status": "started", "message": "分析已開始"}
+
+@app.get("/api/trigger-analysis")
+def trigger_analysis_get(background_tasks: BackgroundTasks):
+    """GET方式觸發分析（用於測試）"""
+    if analysis_status["is_running"]:
+        return {"status": "already_running", "message": "分析正在進行中"}
+
+    logger.info("Analysis triggered via GET endpoint")
     background_tasks.add_task(run_stock_analysis)
     return {"status": "started", "message": "分析已開始"}
 
@@ -235,12 +275,34 @@ def run_now(background_tasks: BackgroundTasks):
 @app.get("/api/analysis")
 def get_analysis():
     try:
+        logger.info(f"Checking analysis file at: {ANALYSIS_PATH}")
+        logger.info(f"File exists: {ANALYSIS_PATH.exists()}")
+
         if ANALYSIS_PATH.exists():
-            data = json.loads(ANALYSIS_PATH.read_text(encoding='utf-8'))
+            content = ANALYSIS_PATH.read_text(encoding='utf-8').strip()
+            if not content:
+                logger.warning("Analysis file is empty")
+                return {"result": [], "error": "Analysis file is empty"}
+
+            data = json.loads(content)
             cleaned_data = clean_nans(data)
+            logger.info(f"Analysis data loaded successfully, result count: {len(cleaned_data.get('result', []))}")
             return cleaned_data
         else:
-            return {"result": None, "error": "Analysis file not found"}
+            logger.warning(f"Analysis file not found at: {ANALYSIS_PATH}")
+            # 嘗試創建空的分析結果文件
+            try:
+                ANALYSIS_PATH.parent.mkdir(parents=True, exist_ok=True)
+                empty_result = {"result": [], "timestamp": "", "analysis_date": "", "total_stocks": 0, "analyzed_stocks": 0}
+                ANALYSIS_PATH.write_text(json.dumps(empty_result), encoding='utf-8')
+                logger.info(f"Created empty analysis file at: {ANALYSIS_PATH}")
+                return empty_result
+            except Exception as create_error:
+                logger.error(f"Failed to create analysis file: {create_error}")
+                return {"result": [], "error": "Analysis file not found and could not be created"}
+    except json.JSONDecodeError as e:
+        logger.error(f"JSON decode error in analysis file: {e}")
+        return {"result": [], "error": "Invalid JSON in analysis file"}
     except Exception as e:
         logger.error(f"Error reading analysis: {e}")
         return JSONResponse(
