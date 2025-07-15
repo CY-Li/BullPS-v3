@@ -12,9 +12,17 @@ from integrated_stock_analyzer import IntegratedStockAnalyzer
 # --- 常數定義 --- 
 
 # --- 常數定義 ---
-PORTFOLIO_FILE = os.path.join(os.path.dirname(__file__), 'monitored_stocks.json')
-ANALYSIS_RESULT_FILE = os.path.join(os.path.dirname(__file__), '..', 'analysis_result.json')
-TRADE_HISTORY_FILE = os.path.join(os.path.dirname(__file__), 'trade_history.json')
+# 檢查是否在容器環境中
+if os.path.exists("/app/data"):
+    # 容器環境：使用可寫的數據目錄
+    PORTFOLIO_FILE = "/app/data/monitored_stocks.json"
+    ANALYSIS_RESULT_FILE = "/app/data/analysis_result.json"
+    TRADE_HISTORY_FILE = "/app/data/trade_history.json"
+else:
+    # 本地環境：使用原始路徑
+    PORTFOLIO_FILE = os.path.join(os.path.dirname(__file__), 'monitored_stocks.json')
+    ANALYSIS_RESULT_FILE = os.path.join(os.path.dirname(__file__), '..', 'analysis_result.json')
+    TRADE_HISTORY_FILE = os.path.join(os.path.dirname(__file__), 'trade_history.json')
 
 # --- 策略參數 (可調整) ---
 

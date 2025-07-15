@@ -46,9 +46,20 @@ app = FastAPI(lifespan=lifespan)
 
 # 檔案路徑
 BASE_DIR = Path(__file__).parent.parent
-ANALYSIS_PATH = BASE_DIR / "analysis_result.json"
-MONITORED_STOCKS_PATH = BASE_DIR / "backend" / "monitored_stocks.json"
-TRADE_HISTORY_PATH = BASE_DIR / "backend" / "trade_history.json"
+
+# 檢查是否在容器環境中
+if os.path.exists("/app/data"):
+    # 容器環境：使用可寫的數據目錄
+    DATA_DIR = Path("/app/data")
+    ANALYSIS_PATH = DATA_DIR / "analysis_result.json"
+    MONITORED_STOCKS_PATH = DATA_DIR / "monitored_stocks.json"
+    TRADE_HISTORY_PATH = DATA_DIR / "trade_history.json"
+else:
+    # 本地環境：使用原始路徑
+    ANALYSIS_PATH = BASE_DIR / "analysis_result.json"
+    MONITORED_STOCKS_PATH = BASE_DIR / "backend" / "monitored_stocks.json"
+    TRADE_HISTORY_PATH = BASE_DIR / "backend" / "trade_history.json"
+
 STATIC_DIR = BASE_DIR / "frontend" / "dist"
 
 
