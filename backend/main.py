@@ -434,9 +434,19 @@ def fix_permissions():
     """修復數據文件權限（用於 Zeabur 部署後的權限問題）"""
     try:
         import stat
+        import subprocess
 
         results = []
         files_to_fix = [ANALYSIS_PATH, MONITORED_STOCKS_PATH, TRADE_HISTORY_PATH]
+
+        # 首先嘗試修復目錄權限
+        data_dir = ANALYSIS_PATH.parent
+        try:
+            # 使用 chmod 修復目錄權限
+            subprocess.run(["chmod", "-R", "777", str(data_dir)], check=False)
+            results.append(f"✅ 嘗試修復目錄權限: {data_dir}")
+        except Exception as e:
+            results.append(f"❌ 修復目錄權限失敗: {e}")
 
         for file_path in files_to_fix:
             if file_path.exists():

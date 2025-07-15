@@ -28,10 +28,21 @@ class PathManager:
              Path("/proc/1/cgroup").exists())  # Linux 容器特徵
         )
 
+        # 檢測 Zeabur 環境
+        is_zeabur = (
+            os.environ.get("ZEABUR") == "1" or
+            "zeabur" in os.environ.get("HOSTNAME", "").lower()
+        )
+
         if is_container:
             # 容器環境：統一使用 /app/data
             data_dir = Path("/app/data")
             print(f"📁 容器環境使用統一數據目錄: {data_dir}")
+
+            # 在 Zeabur 環境中嘗試修復權限
+            if is_zeabur:
+                print("🔧 檢測到 Zeabur 環境，嘗試修復權限...")
+                self._fix_zeabur_permissions(data_dir)
         else:
             # 本地環境：使用項目根目錄下的 data
             data_dir = self.base_dir / "data"
@@ -42,9 +53,33 @@ class PathManager:
             data_dir.mkdir(parents=True, exist_ok=True)
             print(f"Using unified data directory: {data_dir}")
         except PermissionError:
-            print(f"Cannot create data directory {data_dir}, using read-only access")
+            print(f"Cannot create data directory {data_dir}, attempting to fix permissions")
+            self._fix_zeabur_permissions(data_dir)
 
         return data_dir
+
+    def _fix_zeabur_permissions(self, data_dir):
+        """嘗試修復 Zeabur 環境中的權限問題"""
+        import subprocess
+
+        try:
+            # 嘗試使用 chmod 修復權限
+            subprocess.run(["chmod", "-R", "777", str(data_dir)], check=False)
+            print(f"✅ 嘗試修復 {data_dir} 目錄權限")
+
+            # 檢查是否可寫
+            test_file = data_dir / "permission_test.tmp"
+            try:
+                test_file.write_text("test")
+                test_file.unlink()  # 刪除測試文件
+                print(f"✅ 權限修復成功: {data_dir} 目錄可寫")
+                return True
+            except (PermissionError, OSError):
+                print(f"❌ 權限修復失敗: {data_dir} 目錄仍然不可寫")
+        except Exception as e:
+            print(f"❌ 修復權限時發生錯誤: {e}")
+
+        return False
 
     def _initialize_paths(self):
         """初始化所有文件路徑"""

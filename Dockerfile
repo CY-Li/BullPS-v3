@@ -37,6 +37,7 @@ COPY multi_timeframe_analyzer.py ./
 COPY api_error_handler.py ./
 COPY backtester.py ./
 COPY docker-entrypoint.sh ./
+COPY fix-zeabur-permissions.sh ./
 
 # 複製前端構建產物
 COPY --from=frontend-build /app/frontend/dist ./frontend/dist
@@ -52,18 +53,20 @@ ENV CONTAINER_ENV=true
 # 創建統一數據目錄並設置權限
 RUN mkdir -p /app/data && \
     useradd -m appuser && \
-    chmod +x /app/docker-entrypoint.sh
+    chmod +x /app/docker-entrypoint.sh && \
+    chmod +x /app/fix-zeabur-permissions.sh
 
 # 初始化統一數據文件
 RUN echo '[]' > /app/data/monitored_stocks.json && \
     echo '[]' > /app/data/trade_history.json && \
     echo '{"result": [], "timestamp": "", "analysis_date": "", "total_stocks": 0, "analyzed_stocks": 0}' > /app/data/analysis_result.json
 
-# 確保 /app/data 目錄完全可寫（關鍵修復）
+# 確保 /app/data 目錄完全可寫（Zeabur 權限修復）
 RUN chown -R appuser:appuser /app && \
     chmod -R 755 /app && \
-    chmod 775 /app/data && \
-    chmod 664 /app/data/*.json
+    chmod 777 /app/data && \
+    chmod 666 /app/data/*.json && \
+    echo "appuser ALL=(ALL) NOPASSWD: /bin/chown, /bin/chmod" >> /etc/sudoers
 
 # 切換到應用程式用戶
 USER appuser
