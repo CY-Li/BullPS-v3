@@ -32,34 +32,34 @@ class PathManager:
     def _get_analysis_result_path(self):
         """獲取分析結果文件路徑"""
         possible_paths = [
-            Path("/app/data/analysis_result.json"),
+            Path("/app/backend/analysis_result.json"),  # 優先檢查 backend 目錄
             Path("/app/analysis_result.json"),
-            self.base_dir / "analysis_result.json",
-            Path("/app/backend/analysis_result.json")
+            Path("/app/data/analysis_result.json"),
+            self.base_dir / "analysis_result.json"
         ]
-        
+
         return self._find_existing_or_default(possible_paths, "analysis_result.json")
     
     def _get_monitored_stocks_path(self):
         """獲取監控股票文件路徑"""
         possible_paths = [
-            Path("/app/data/monitored_stocks.json"),
-            Path("/app/backend/monitored_stocks.json"),
+            Path("/app/backend/monitored_stocks.json"),  # 優先檢查 backend 目錄
             self.base_dir / "backend" / "monitored_stocks.json",
+            Path("/app/data/monitored_stocks.json"),
             Path("/app/monitored_stocks.json")
         ]
-        
+
         return self._find_existing_or_default(possible_paths, "monitored_stocks.json")
     
     def _get_trade_history_path(self):
         """獲取交易歷史文件路徑"""
         possible_paths = [
-            Path("/app/data/trade_history.json"),
-            Path("/app/backend/trade_history.json"),
+            Path("/app/backend/trade_history.json"),  # 優先檢查 backend 目錄
             self.base_dir / "backend" / "trade_history.json",
+            Path("/app/data/trade_history.json"),
             Path("/app/trade_history.json")
         ]
-        
+
         return self._find_existing_or_default(possible_paths, "trade_history.json")
     
     def _find_existing_or_default(self, possible_paths, filename):
@@ -105,23 +105,30 @@ class PathManager:
     def _ensure_file_exists(self, path, filename):
         """確保文件存在，如果不存在則創建空文件"""
         try:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            
+            # 嘗試創建目錄（忽略權限錯誤）
+            try:
+                path.parent.mkdir(parents=True, exist_ok=True)
+            except PermissionError:
+                print(f"Cannot create directory for {filename}, using existing path")
+
             if not path.exists():
-                if filename == "analysis_result.json":
-                    empty_data = {
-                        "result": [], 
-                        "timestamp": "", 
-                        "analysis_date": "", 
-                        "total_stocks": 0, 
-                        "analyzed_stocks": 0
-                    }
-                else:
-                    empty_data = []
-                
-                with open(path, 'w', encoding='utf-8') as f:
-                    json.dump(empty_data, f, indent=2, ensure_ascii=False)
-                print(f"Created empty {filename} at: {path}")
+                try:
+                    if filename == "analysis_result.json":
+                        empty_data = {
+                            "result": [],
+                            "timestamp": "",
+                            "analysis_date": "",
+                            "total_stocks": 0,
+                            "analyzed_stocks": 0
+                        }
+                    else:
+                        empty_data = []
+
+                    with open(path, 'w', encoding='utf-8') as f:
+                        json.dump(empty_data, f, indent=2, ensure_ascii=False)
+                    print(f"Created empty {filename} at: {path}")
+                except (PermissionError, OSError) as e:
+                    print(f"Cannot create {filename} at {path}: {e}")
         except Exception as e:
             print(f"Failed to ensure {filename} exists: {e}")
     
