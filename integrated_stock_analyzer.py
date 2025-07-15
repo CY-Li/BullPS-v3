@@ -8,6 +8,16 @@
 
 import json
 import pandas as pd
+import sys
+import os
+
+# 設置控制台編碼以支持 Unicode 字符
+if sys.platform.startswith('win'):
+    try:
+        # 嘗試設置 UTF-8 編碼
+        os.system('chcp 65001 > nul')
+    except:
+        pass
 import numpy as np
 import yfinance as yf
 from datetime import datetime
@@ -63,12 +73,18 @@ class IntegratedStockAnalyzer:
 
                 if data.empty:
                     if attempt == 0:  # 只在第一次嘗試時顯示警告
-                        print(f"  ⚠️  {symbol}: 無數據返回")
+                        try:
+                            print(f"  ⚠️  {symbol}: 無數據返回")
+                        except UnicodeEncodeError:
+                            print(f"  WARNING {symbol}: 無數據返回")
                     return None
 
                 if len(data) < 30:
                     if attempt == 0:
-                        print(f"  ⚠️  {symbol}: 數據不足 ({len(data)}天)")
+                        try:
+                            print(f"  ⚠️  {symbol}: 數據不足 ({len(data)}天)")
+                        except UnicodeEncodeError:
+                            print(f"  WARNING {symbol}: 數據不足 ({len(data)}天)")
                     return None
 
                 return data
@@ -77,16 +93,28 @@ class IntegratedStockAnalyzer:
                 error_msg = str(e)
 
                 if attempt == 0:  # 只在第一次嘗試時顯示詳細錯誤
-                    if "404" in error_msg or "delisted" in error_msg.lower():
-                        print(f"  ❌ {symbol}: 股票可能已下市")
-                        return None  # 不重試下市股票
-                    elif "No data found" in error_msg:
-                        print(f"  ❌ {symbol}: 無數據")
-                        return None  # 不重試無數據股票
-                    elif "timeout" in error_msg.lower():
-                        print(f"  ⏳ {symbol}: 請求超時，重試中...")
-                    else:
-                        print(f"  ❌ {symbol}: 獲取數據失敗 - {error_msg}")
+                    try:
+                        if "404" in error_msg or "delisted" in error_msg.lower():
+                            print(f"  ❌ {symbol}: 股票可能已下市")
+                            return None  # 不重試下市股票
+                        elif "No data found" in error_msg:
+                            print(f"  ❌ {symbol}: 無數據")
+                            return None  # 不重試無數據股票
+                        elif "timeout" in error_msg.lower():
+                            print(f"  ⏳ {symbol}: 請求超時，重試中...")
+                        else:
+                            print(f"  ❌ {symbol}: 獲取數據失敗 - {error_msg}")
+                    except UnicodeEncodeError:
+                        if "404" in error_msg or "delisted" in error_msg.lower():
+                            print(f"  ERROR {symbol}: 股票可能已下市")
+                            return None
+                        elif "No data found" in error_msg:
+                            print(f"  ERROR {symbol}: 無數據")
+                            return None
+                        elif "timeout" in error_msg.lower():
+                            print(f"  TIMEOUT {symbol}: 請求超時，重試中...")
+                        else:
+                            print(f"  ERROR {symbol}: 獲取數據失敗 - {error_msg}")
 
                 if attempt < max_retries - 1:
                     time.sleep(2)  # 等待後重試
