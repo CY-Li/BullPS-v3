@@ -47,6 +47,7 @@ ENV PYTHONUNBUFFERED=1
 ENV PORT=8080
 ENV PYTHONPATH=/app
 ENV ASGI_APPLICATION=backend.main:app
+ENV CONTAINER_ENV=true
 
 # 創建統一數據目錄並設置權限
 RUN mkdir -p /app/data && \

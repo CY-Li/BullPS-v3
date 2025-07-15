@@ -15,8 +15,40 @@ from integrated_stock_analyzer import IntegratedStockAnalyzer
 # --- 常數定義 ---
 def get_unified_data_dir():
     """獲取統一的數據目錄"""
-    if os.path.exists("/app"):
-        # 容器環境：使用 /app/data
+    # 檢測 Zeabur 環境
+    is_zeabur = os.environ.get("ZEABUR") == "1" or "zeabur" in os.environ.get("HOSTNAME", "").lower()
+
+    if is_zeabur:
+        # Zeabur 環境：尋找可寫目錄
+        possible_dirs = [
+            Path("/tmp/data"),           # 臨時目錄通常可寫
+            Path("/app/backend"),        # backend 目錄可能可寫
+            Path("/app"),                # 應用根目錄
+            Path("/var/tmp/data")        # 另一個臨時目錄
+        ]
+
+        for data_dir in possible_dirs:
+            try:
+                data_dir.mkdir(parents=True, exist_ok=True)
+                # 測試寫入權限
+                test_file = data_dir / "test_write.tmp"
+                test_file.write_text("test")
+                test_file.unlink()
+                print(f"✅ Zeabur 環境使用可寫目錄: {data_dir}")
+
+                # 遷移現有數據文件
+                migrate_data_files(data_dir)
+                return data_dir
+            except (PermissionError, OSError) as e:
+                print(f"⚠️  目錄 {data_dir} 不可寫: {e}")
+                continue
+
+        # 如果都不可寫，回退到 /app/data（只讀模式）
+        print("⚠️  所有目錄都不可寫，使用只讀模式")
+        data_dir = Path("/app/data")
+
+    elif os.path.exists("/app"):
+        # 其他容器環境：使用 /app/data
         data_dir = Path("/app/data")
     else:
         # 本地環境：使用項目根目錄下的 data
@@ -31,6 +63,31 @@ def get_unified_data_dir():
         print(f"Cannot create data directory {data_dir}, using read-only access")
 
     return data_dir
+
+def migrate_data_files(target_dir):
+    """遷移現有數據文件到可寫目錄"""
+    source_dir = Path("/app/data")
+    if not source_dir.exists():
+        return
+
+    files_to_migrate = [
+        "analysis_result.json",
+        "monitored_stocks.json",
+        "trade_history.json"
+    ]
+
+    for filename in files_to_migrate:
+        source_file = source_dir / filename
+        target_file = target_dir / filename
+
+        if source_file.exists() and not target_file.exists():
+            try:
+                # 複製文件內容
+                content = source_file.read_text(encoding='utf-8')
+                target_file.write_text(content, encoding='utf-8')
+                print(f"✅ 遷移文件: {source_file} → {target_file}")
+            except Exception as e:
+                print(f"⚠️  遷移文件失敗 {filename}: {e}")
 
 def get_unified_file_path(filename):
     """獲取統一的文件路徑"""
