@@ -48,14 +48,24 @@ app = FastAPI(lifespan=lifespan)
 BASE_DIR = Path(__file__).parent.parent
 
 # 使用統一的路徑管理器
-from backend.path_manager import path_manager
-
-# 設置文件路徑
-ANALYSIS_PATH = path_manager.get_analysis_path()
-MONITORED_STOCKS_PATH = path_manager.get_monitored_stocks_path()
-TRADE_HISTORY_PATH = path_manager.get_trade_history_path()
-
-logger.info(f"Using paths - Analysis: {ANALYSIS_PATH}, Monitored: {MONITORED_STOCKS_PATH}, Trade History: {TRADE_HISTORY_PATH}")
+try:
+    from backend.path_manager import path_manager
+    ANALYSIS_PATH = path_manager.get_analysis_path()
+    MONITORED_STOCKS_PATH = path_manager.get_monitored_stocks_path()
+    TRADE_HISTORY_PATH = path_manager.get_trade_history_path()
+    logger.info(f"Using path_manager - Analysis: {ANALYSIS_PATH}, Monitored: {MONITORED_STOCKS_PATH}, Trade History: {TRADE_HISTORY_PATH}")
+except ImportError as e:
+    logger.warning(f"Failed to import path_manager: {e}, using fallback paths")
+    # 回退到原始路徑邏輯
+    if os.path.exists("/app/data"):
+        ANALYSIS_PATH = Path("/app/data/analysis_result.json")
+        MONITORED_STOCKS_PATH = Path("/app/data/monitored_stocks.json")
+        TRADE_HISTORY_PATH = Path("/app/data/trade_history.json")
+    else:
+        ANALYSIS_PATH = BASE_DIR / "analysis_result.json"
+        MONITORED_STOCKS_PATH = BASE_DIR / "backend" / "monitored_stocks.json"
+        TRADE_HISTORY_PATH = BASE_DIR / "backend" / "trade_history.json"
+    logger.info(f"Using fallback paths - Analysis: {ANALYSIS_PATH}, Monitored: {MONITORED_STOCKS_PATH}, Trade History: {TRADE_HISTORY_PATH}")
 
 STATIC_DIR = BASE_DIR / "frontend" / "dist"
 
@@ -205,7 +215,24 @@ def scheduled_task():
 
 @app.get("/api/health")
 def health_check():
-    path_info = path_manager.get_info()
+    try:
+        from backend.path_manager import path_manager
+        path_info = path_manager.get_info()
+    except Exception as e:
+        path_info = {
+            "error": f"Path manager failed: {e}",
+            "fallback_paths": {
+                "analysis": str(ANALYSIS_PATH),
+                "monitored_stocks": str(MONITORED_STOCKS_PATH),
+                "trade_history": str(TRADE_HISTORY_PATH)
+            },
+            "fallback_exists": {
+                "analysis": ANALYSIS_PATH.exists(),
+                "monitored_stocks": MONITORED_STOCKS_PATH.exists(),
+                "trade_history": TRADE_HISTORY_PATH.exists()
+            }
+        }
+
     return {
         "status": "healthy",
         "timestamp": datetime.now(TZ_TAIPEI).isoformat(),
@@ -239,6 +266,57 @@ def trigger_analysis_get(background_tasks: BackgroundTasks):
     logger.info("Analysis triggered via GET endpoint")
     background_tasks.add_task(run_stock_analysis)
     return {"status": "started", "message": "分析已開始"}
+
+@app.get("/api/debug-files")
+def debug_files():
+    """調試端點：檢查所有可能的文件位置"""
+    import glob
+
+    debug_info = {
+        "current_paths": {
+            "analysis": str(ANALYSIS_PATH),
+            "monitored_stocks": str(MONITORED_STOCKS_PATH),
+            "trade_history": str(TRADE_HISTORY_PATH)
+        },
+        "file_exists": {
+            "analysis": ANALYSIS_PATH.exists(),
+            "monitored_stocks": MONITORED_STOCKS_PATH.exists(),
+            "trade_history": TRADE_HISTORY_PATH.exists()
+        },
+        "file_sizes": {},
+        "all_json_files": []
+    }
+
+    # 檢查文件大小
+    for name, path in [("analysis", ANALYSIS_PATH), ("monitored_stocks", MONITORED_STOCKS_PATH), ("trade_history", TRADE_HISTORY_PATH)]:
+        try:
+            debug_info["file_sizes"][name] = path.stat().st_size if path.exists() else 0
+        except Exception as e:
+            debug_info["file_sizes"][name] = f"Error: {e}"
+
+    # 查找所有 JSON 文件
+    search_patterns = [
+        "/app/**/*.json",
+        "/app/data/*.json",
+        "/app/backend/*.json",
+        "*.json",
+        "backend/*.json"
+    ]
+
+    for pattern in search_patterns:
+        try:
+            files = glob.glob(pattern, recursive=True)
+            for file in files:
+                if file not in debug_info["all_json_files"]:
+                    try:
+                        size = os.path.getsize(file)
+                        debug_info["all_json_files"].append(f"{file} ({size} bytes)")
+                    except:
+                        debug_info["all_json_files"].append(f"{file} (size unknown)")
+        except Exception as e:
+            debug_info["all_json_files"].append(f"Error searching {pattern}: {e}")
+
+    return debug_info
 
 
 

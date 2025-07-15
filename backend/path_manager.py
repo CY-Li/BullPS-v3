@@ -64,20 +64,41 @@ class PathManager:
     
     def _find_existing_or_default(self, possible_paths, filename):
         """查找現有文件或返回默認路徑"""
-        # 首先查找現有文件
+        # 首先查找有數據的現有文件（大於 100 bytes）
+        best_path = None
+        best_size = 0
+
         for path in possible_paths:
-            if path.exists() and path.stat().st_size > 0:
-                print(f"Found existing {filename} at: {path}")
+            if path.exists():
+                try:
+                    size = path.stat().st_size
+                    print(f"Found {filename} at: {path} ({size} bytes)")
+
+                    # 優先選擇有實際數據的文件（大於 100 bytes）
+                    if size > 100 and size > best_size:
+                        best_path = path
+                        best_size = size
+                except Exception as e:
+                    print(f"Error checking {path}: {e}")
+
+        if best_path:
+            print(f"Selected best {filename} at: {best_path} ({best_size} bytes)")
+            return best_path
+
+        # 如果沒有找到有數據的文件，查找任何存在的文件
+        for path in possible_paths:
+            if path.exists():
+                print(f"Using existing {filename} at: {path} (fallback)")
                 return path
-        
-        # 如果沒有找到，使用默認路徑
+
+        # 如果都不存在，使用默認路徑
         if Path("/app/data").exists():
             default_path = Path("/app/data") / filename
         elif filename == "analysis_result.json":
             default_path = self.base_dir / filename
         else:
             default_path = self.base_dir / "backend" / filename
-        
+
         print(f"Using default path for {filename}: {default_path}")
         return default_path
     
