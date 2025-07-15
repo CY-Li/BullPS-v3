@@ -39,10 +39,11 @@ Thumbs.db
 # Logs
 *.log
 
-# Data files (keep structure but ignore content changes)
-# We track the data directory structure but not the actual data
-data/*.json
-!data/.gitkeep
+# Data files (ignore JSON data files in root directory)
+# We ignore the actual data files but track the code structure
+analysis_result.json
+monitored_stocks.json
+trade_history.json
 
 # Temporary files
 *.tmp

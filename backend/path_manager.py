@@ -35,47 +35,97 @@ class PathManager:
         )
 
         if is_container:
-            # 容器環境：統一使用 /app/data
-            data_dir = Path("/app/data")
-            print(f"📁 容器環境使用統一數據目錄: {data_dir}")
+            # 容器環境：統一使用 /app 根目錄
+            data_dir = Path("/app")
+            print(f"📁 容器環境使用根目錄: {data_dir}")
 
             # 在 Zeabur 環境中嘗試修復權限
             if is_zeabur:
                 print("🔧 檢測到 Zeabur 環境，嘗試修復權限...")
                 self._fix_zeabur_permissions(data_dir)
         else:
-            # 本地環境：使用項目根目錄下的 data
-            data_dir = self.base_dir / "data"
-            print(f"📁 本地環境使用統一數據目錄: {data_dir}")
+            # 本地環境：使用項目根目錄
+            data_dir = self.base_dir
+            print(f"📁 本地環境使用根目錄: {data_dir}")
 
-        # 確保數據目錄存在
+        # 確保目錄存在且可寫
         try:
-            data_dir.mkdir(parents=True, exist_ok=True)
-            print(f"Using unified data directory: {data_dir}")
+            # 根目錄已經存在，只需檢查權限
+            print(f"Using root directory: {data_dir}")
         except PermissionError:
-            print(f"Cannot create data directory {data_dir}, attempting to fix permissions")
+            print(f"Cannot access root directory {data_dir}, attempting to fix permissions")
             self._fix_zeabur_permissions(data_dir)
 
         return data_dir
 
-    def _fix_zeabur_permissions(self, data_dir):
+    def _fix_zeabur_permissions(self, root_dir):
         """嘗試修復 Zeabur 環境中的權限問題"""
         import subprocess
+        import stat
 
         try:
-            # 嘗試使用 chmod 修復權限
-            subprocess.run(["chmod", "-R", "777", str(data_dir)], check=False)
-            print(f"✅ 嘗試修復 {data_dir} 目錄權限")
+            # 多重權限修復策略
+            print(f"🔧 開始修復 {root_dir} 目錄權限...")
+
+            # 策略 1: 使用 chmod 修復目錄權限
+            try:
+                subprocess.run(["chmod", "-R", "777", str(root_dir)], check=False, capture_output=True)
+                print(f"✅ 嘗試使用 chmod 修復目錄權限")
+            except Exception as e:
+                print(f"⚠️ chmod 修復失敗: {e}")
+
+            # 策略 2: 使用 Python 的 chmod 修復
+            try:
+                root_dir.chmod(0o777)
+                print(f"✅ 使用 Python chmod 修復目錄權限")
+            except Exception as e:
+                print(f"⚠️ Python chmod 修復失敗: {e}")
+
+            # 策略 3: 嘗試修復所有 JSON 文件權限
+            json_files = ["monitored_stocks.json", "trade_history.json", "analysis_result.json"]
+            for json_file in json_files:
+                file_path = root_dir / json_file
+                try:
+                    if file_path.exists():
+                        file_path.chmod(0o666)
+                        print(f"✅ 修復 {json_file} 文件權限")
+                    else:
+                        # 創建文件並設置權限
+                        if json_file == "analysis_result.json":
+                            default_content = {"result": [], "timestamp": "", "analysis_date": "", "total_stocks": 0, "analyzed_stocks": 0}
+                        else:
+                            default_content = []
+
+                        file_path.write_text(json.dumps(default_content, indent=2, ensure_ascii=False), encoding='utf-8')
+                        file_path.chmod(0o666)
+                        print(f"✅ 創建並設置 {json_file} 權限")
+                except Exception as e:
+                    print(f"⚠️ 修復 {json_file} 權限失敗: {e}")
 
             # 檢查是否可寫
-            test_file = data_dir / "permission_test.tmp"
+            test_file = root_dir / "permission_test.tmp"
             try:
                 test_file.write_text("test")
                 test_file.unlink()  # 刪除測試文件
-                print(f"✅ 權限修復成功: {data_dir} 目錄可寫")
+                print(f"✅ 權限修復成功: {root_dir} 目錄可寫")
                 return True
-            except (PermissionError, OSError):
-                print(f"❌ 權限修復失敗: {data_dir} 目錄仍然不可寫")
+            except (PermissionError, OSError) as e:
+                print(f"❌ 權限修復失敗: {root_dir} 目錄仍然不可寫 - {e}")
+
+                # 最後嘗試: 使用 sudo (如果可用)
+                try:
+                    subprocess.run(["sudo", "chmod", "-R", "777", str(root_dir)], check=False, capture_output=True)
+                    subprocess.run(["sudo", "chown", "-R", "$(whoami)", str(root_dir)], shell=True, check=False, capture_output=True)
+                    print(f"✅ 嘗試使用 sudo 修復權限")
+
+                    # 再次測試
+                    test_file.write_text("test")
+                    test_file.unlink()
+                    print(f"✅ sudo 權限修復成功")
+                    return True
+                except Exception as sudo_e:
+                    print(f"❌ sudo 權限修復也失敗: {sudo_e}")
+
         except Exception as e:
             print(f"❌ 修復權限時發生錯誤: {e}")
 
@@ -145,25 +195,25 @@ class PathManager:
     
     def sync_files(self):
         """同步文件到所有可能的位置（用於兼容性）"""
-        print("Using unified data directory - no sync needed")
+        print("Using unified root directory - no sync needed")
         # 統一路徑後不需要同步，所有組件都使用相同的文件位置
     
     def get_info(self):
         """獲取路徑管理器的信息"""
         info = {
-            "environment": "container" if Path("/app/data").exists() else "local",
+            "environment": "container" if Path("/app").exists() else "local",
             "base_dir": str(self.base_dir),
             "paths": {name: str(path) for name, path in self._paths.items()},
             "file_exists": {name: path.exists() for name, path in self._paths.items()},
             "file_sizes": {}
         }
-        
+
         for name, path in self._paths.items():
             try:
                 info["file_sizes"][name] = path.stat().st_size if path.exists() else 0
             except Exception:
                 info["file_sizes"][name] = 0
-        
+
         return info
 
 # 全局路徑管理器實例

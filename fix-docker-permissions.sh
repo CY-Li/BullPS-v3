@@ -17,20 +17,20 @@ fi
 echo "📁 修復數據文件權限..."
 
 # 修復文件所有者
-docker exec -u root "$CONTAINER_NAME" chown appuser:appuser /app/data/analysis_result.json 2>/dev/null || echo "⚠️  analysis_result.json 權限修復失敗"
-docker exec -u root "$CONTAINER_NAME" chown appuser:appuser /app/data/monitored_stocks.json 2>/dev/null || echo "⚠️  monitored_stocks.json 權限修復失敗"
-docker exec -u root "$CONTAINER_NAME" chown appuser:appuser /app/data/trade_history.json 2>/dev/null || echo "⚠️  trade_history.json 權限修復失敗"
+docker exec -u root "$CONTAINER_NAME" chown appuser:appuser /app/analysis_result.json 2>/dev/null || echo "⚠️  analysis_result.json 權限修復失敗"
+docker exec -u root "$CONTAINER_NAME" chown appuser:appuser /app/monitored_stocks.json 2>/dev/null || echo "⚠️  monitored_stocks.json 權限修復失敗"
+docker exec -u root "$CONTAINER_NAME" chown appuser:appuser /app/trade_history.json 2>/dev/null || echo "⚠️  trade_history.json 權限修復失敗"
 
 # 修復文件權限
-docker exec -u root "$CONTAINER_NAME" chmod 664 /app/data/analysis_result.json 2>/dev/null || echo "⚠️  analysis_result.json 權限設置失敗"
-docker exec -u root "$CONTAINER_NAME" chmod 664 /app/data/monitored_stocks.json 2>/dev/null || echo "⚠️  monitored_stocks.json 權限設置失敗"
-docker exec -u root "$CONTAINER_NAME" chmod 664 /app/data/trade_history.json 2>/dev/null || echo "⚠️  trade_history.json 權限設置失敗"
+docker exec -u root "$CONTAINER_NAME" chmod 664 /app/analysis_result.json 2>/dev/null || echo "⚠️  analysis_result.json 權限設置失敗"
+docker exec -u root "$CONTAINER_NAME" chmod 664 /app/monitored_stocks.json 2>/dev/null || echo "⚠️  monitored_stocks.json 權限設置失敗"
+docker exec -u root "$CONTAINER_NAME" chmod 664 /app/trade_history.json 2>/dev/null || echo "⚠️  trade_history.json 權限設置失敗"
 
 echo "✅ 權限修復完成！"
 
 # 顯示當前權限狀態
 echo "📊 當前文件權限狀態："
-docker exec "$CONTAINER_NAME" ls -la /app/data/
+docker exec "$CONTAINER_NAME" ls -la /app/*.json
 
 echo ""
 echo "🎯 現在可以正常使用應用程式的寫入功能了！"

@@ -24,42 +24,117 @@ def get_unified_data_dir():
     )
 
     if is_container:
-        # 容器環境：統一使用 /app/data
-        data_dir = Path("/app/data")
+        # 容器環境：統一使用 /app 根目錄
+        data_dir = Path("/app")
     else:
-        # 本地環境：使用項目根目錄下的 data
+        # 本地環境：使用項目根目錄
         base_dir = Path(__file__).parent.parent
-        data_dir = base_dir / "data"
+        data_dir = base_dir
 
-    # 確保數據目錄存在
+    # 確保目錄可訪問
     try:
-        data_dir.mkdir(parents=True, exist_ok=True)
-        print(f"Using unified data directory: {data_dir}")
+        print(f"Using unified root directory: {data_dir}")
     except PermissionError:
-        print(f"Cannot create data directory {data_dir}, using read-only access")
+        print(f"Cannot access root directory {data_dir}, using read-only access")
 
     return data_dir
 
 def get_unified_file_path(filename):
-    """獲取統一的文件路徑"""
+    """獲取統一的文件路徑，包含權限錯誤處理和備份機制"""
     data_dir = get_unified_data_dir()
-    file_path = data_dir / filename
+    primary_path = data_dir / filename
 
-    # 如果文件不存在，創建空文件
-    if not file_path.exists():
+    # 檢測容器環境
+    is_container = (
+        os.path.exists("/app") and
+        (os.environ.get("CONTAINER_ENV") == "true" or
+         os.environ.get("PORT") is not None or
+         os.path.exists("/proc/1/cgroup"))
+    )
+
+    # 如果是容器環境，設置備份路徑
+    if is_container:
+        backup_dir = Path("/tmp/bullps_data")
+        backup_path = backup_dir / filename
+    else:
+        backup_path = None
+
+    # 測試主要路徑是否可用
+    def test_file_writable(path):
+        """測試文件是否可寫"""
         try:
-            if filename == "analysis_result.json":
-                empty_data = {"result": [], "timestamp": "", "analysis_date": "", "total_stocks": 0, "analyzed_stocks": 0}
+            if path.exists():
+                # 文件存在，測試寫入權限
+                with open(path, 'r+', encoding='utf-8') as f:
+                    content = f.read()
+                    f.seek(0)
+                    f.write(content)
+                    f.truncate()
+                return True
             else:
-                empty_data = []
+                # 文件不存在，嘗試創建
+                if filename == "analysis_result.json":
+                    empty_data = {"result": [], "timestamp": "", "analysis_date": "", "total_stocks": 0, "analyzed_stocks": 0}
+                else:
+                    empty_data = []
 
-            with open(file_path, 'w', encoding='utf-8') as f:
-                json.dump(empty_data, f, indent=2, ensure_ascii=False)
-            print(f"Created empty unified file: {file_path}")
-        except (PermissionError, OSError) as e:
-            print(f"Cannot create unified file {file_path}: {e}")
+                with open(path, 'w', encoding='utf-8') as f:
+                    json.dump(empty_data, f, indent=2, ensure_ascii=False)
+                return True
+        except (PermissionError, OSError):
+            return False
 
-    return str(file_path)
+    # 嘗試使用主要路徑
+    if test_file_writable(primary_path):
+        print(f"✅ 使用主要路徑: {primary_path}")
+        return str(primary_path)
+
+    # 主要路徑不可用，嘗試備份路徑（僅在容器環境中）
+    if is_container and backup_path:
+        print(f"⚠️ 主要路徑不可寫: {primary_path}")
+        print(f"🔄 嘗試使用備份路徑: {backup_path}")
+
+        try:
+            # 確保備份目錄存在
+            backup_dir.mkdir(parents=True, exist_ok=True)
+
+            # 如果主要文件存在但不可寫，嘗試複製到備份位置
+            if primary_path.exists():
+                try:
+                    # 嘗試讀取主要文件內容並寫入備份文件
+                    with open(primary_path, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                    with open(backup_path, 'w', encoding='utf-8') as f:
+                        f.write(content)
+                    print(f"✅ 已複製 {primary_path} 內容到 {backup_path}")
+                except Exception as copy_e:
+                    print(f"⚠️ 複製文件失敗: {copy_e}")
+                    # 創建默認內容
+                    if filename == "analysis_result.json":
+                        empty_data = {"result": [], "timestamp": "", "analysis_date": "", "total_stocks": 0, "analyzed_stocks": 0}
+                    else:
+                        empty_data = []
+
+                    with open(backup_path, 'w', encoding='utf-8') as f:
+                        json.dump(empty_data, f, indent=2, ensure_ascii=False)
+            else:
+                # 創建默認內容
+                if filename == "analysis_result.json":
+                    empty_data = {"result": [], "timestamp": "", "analysis_date": "", "total_stocks": 0, "analyzed_stocks": 0}
+                else:
+                    empty_data = []
+
+                with open(backup_path, 'w', encoding='utf-8') as f:
+                    json.dump(empty_data, f, indent=2, ensure_ascii=False)
+
+            print(f"✅ 使用備份路徑: {backup_path}")
+            return str(backup_path)
+        except Exception as backup_e:
+            print(f"❌ 備份路徑也無法使用: {backup_e}")
+
+    # 所有路徑都不可用，返回主要路徑讓調用者處理錯誤
+    print(f"❌ 所有路徑都不可用，返回主要路徑: {primary_path}")
+    return str(primary_path)
 
 # 使用統一路徑
 PORTFOLIO_FILE = get_unified_file_path("monitored_stocks.json")
@@ -110,7 +185,7 @@ def load_json_file(file_path):
         return []
 
 def save_json_file(data, file_path):
-    """通用 JSON 檔案儲存函式"""
+    """通用 JSON 檔案儲存函式，包含錯誤處理和備份機制，以及權限修復"""
     class NpEncoder(json.JSONEncoder):
         def default(self, obj):
             if isinstance(obj, np.integer):
@@ -121,26 +196,82 @@ def save_json_file(data, file_path):
                 return obj.tolist()
             return super(NpEncoder, self).default(obj)
 
-    try:
-        # 處理 NaN 值，將其轉換為 None
-        def clean_nan_values(obj):
-            if isinstance(obj, float) and (obj != obj): # 檢查是否為 NaN
-                return None
-            elif isinstance(obj, dict):
-                return {k: clean_nan_values(v) for k, v in obj.items()}
-            elif isinstance(obj, list):
-                return [clean_nan_values(elem) for elem in obj]
-            else:
-                return obj
+    # 處理 NaN 值，將其轉換為 None
+    def clean_nan_values(obj):
+        if isinstance(obj, float) and (obj != obj): # 檢查是否為 NaN
+            return None
+        elif isinstance(obj, dict):
+            return {k: clean_nan_values(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [clean_nan_values(elem) for elem in obj]
+        else:
+            return obj
 
-        cleaned_data = clean_nan_values(data)
+    cleaned_data = clean_nan_values(data)
+
+    # 嘗試保存到主要位置
+    try:
+        # 確保目錄存在
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+
+        # 嘗試修復文件權限 - 多重策略
+        if os.path.exists(file_path):
+            # 策略1: 使用 os.chmod
+            try:
+                os.chmod(file_path, 0o666)
+            except Exception:
+                pass
+
+            # 策略2: 使用 subprocess (如果可用)
+            try:
+                import subprocess
+                subprocess.run(["chmod", "666", str(file_path)], check=False, capture_output=True)
+            except Exception:
+                pass
+
+            # 策略3: 檢查文件是否可寫
+            if not os.access(file_path, os.W_OK):
+                print(f"⚠️ 文件 {file_path} 不可寫，嘗試更強力的權限修復")
+                try:
+                    # 嘗試使用 sudo (如果可用)
+                    subprocess.run(["sudo", "chmod", "666", str(file_path)], check=False, capture_output=True)
+                    subprocess.run(["sudo", "chown", "$(whoami)", str(file_path)], shell=True, check=False, capture_output=True)
+                except Exception:
+                    pass
+
+        # 寫入文件
         with open(file_path, 'w', encoding='utf-8') as f:
             json.dump(cleaned_data, f, indent=2, ensure_ascii=False, cls=NpEncoder)
+
+        return True  # 保存成功
     except (PermissionError, OSError) as e:
         print(f"❌ 儲存至 {file_path} 時發生權限錯誤: {e}")
         print(f"   請檢查文件權限或磁盤空間")
+
+        # 嘗試保存到備份位置
+        try:
+            # 創建備份目錄
+            backup_dir = "/tmp/bullps_data"
+            os.makedirs(backup_dir, exist_ok=True)
+
+            # 設置備份文件路徑
+            backup_file = os.path.join(backup_dir, os.path.basename(file_path))
+
+            # 寫入備份文件
+            with open(backup_file, 'w', encoding='utf-8') as f:
+                json.dump(cleaned_data, f, indent=2, ensure_ascii=False, cls=NpEncoder)
+
+            # 設置備份文件權限
+            os.chmod(backup_file, 0o666)
+
+            print(f"✅ 已保存到備份位置: {backup_file}")
+            return True  # 備份保存成功
+        except Exception as backup_e:
+            print(f"❌ 備份保存也失敗: {backup_e}")
+            return False  # 所有保存嘗試都失敗
     except Exception as e:
         print(f"❌ 儲存至 {file_path} 時發生未知錯誤: {e}")
+        return False  # 保存失敗
 
 def get_latest_analysis(symbol):
     """從 analysis_result.json 讀取指定股票的最新分析數據"""

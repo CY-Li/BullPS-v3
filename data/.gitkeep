@@ -1,2 +1,0 @@
-# This file ensures the data directory is tracked by git
-# The actual JSON data files are ignored but the directory structure is preserved

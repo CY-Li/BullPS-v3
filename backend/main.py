@@ -57,14 +57,14 @@ try:
 except ImportError as e:
     logger.warning(f"Failed to import path_manager: {e}, using fallback paths")
     # 回退到原始路徑邏輯
-    if os.path.exists("/app/data"):
-        ANALYSIS_PATH = Path("/app/data/analysis_result.json")
-        MONITORED_STOCKS_PATH = Path("/app/data/monitored_stocks.json")
-        TRADE_HISTORY_PATH = Path("/app/data/trade_history.json")
+    if os.path.exists("/app"):
+        ANALYSIS_PATH = Path("/app/analysis_result.json")
+        MONITORED_STOCKS_PATH = Path("/app/monitored_stocks.json")
+        TRADE_HISTORY_PATH = Path("/app/trade_history.json")
     else:
         ANALYSIS_PATH = BASE_DIR / "analysis_result.json"
-        MONITORED_STOCKS_PATH = BASE_DIR / "backend" / "monitored_stocks.json"
-        TRADE_HISTORY_PATH = BASE_DIR / "backend" / "trade_history.json"
+        MONITORED_STOCKS_PATH = BASE_DIR / "monitored_stocks.json"
+        TRADE_HISTORY_PATH = BASE_DIR / "trade_history.json"
     logger.info(f"Using fallback paths - Analysis: {ANALYSIS_PATH}, Monitored: {MONITORED_STOCKS_PATH}, Trade History: {TRADE_HISTORY_PATH}")
 
 STATIC_DIR = BASE_DIR / "frontend" / "dist"
@@ -312,7 +312,7 @@ def debug_files():
     # 查找所有 JSON 文件
     search_patterns = [
         "/app/**/*.json",
-        "/app/data/*.json",
+        "/app/*.json",
         "/app/backend/*.json",
         "*.json",
         "backend/*.json"
@@ -429,95 +429,265 @@ def get_trade_history():
             content={"error": "Failed to read trade history"}
         )
 
+@app.post("/api/reset-file-permissions")
+def reset_file_permissions():
+    """重置文件權限（用於手動覆蓋文件後的權限修復）"""
+    try:
+        import subprocess
+        import os
+
+        results = []
+        files_to_fix = [ANALYSIS_PATH, MONITORED_STOCKS_PATH, TRADE_HISTORY_PATH]
+
+        # 記錄當前用戶信息
+        current_user = os.environ.get("USER", "unknown")
+        results.append(f"當前用戶: {current_user}")
+
+        # 強制修復所有文件的所有者和權限
+        for file_path in files_to_fix:
+            if file_path.exists():
+                try:
+                    # 方法1: 使用 chown 修復所有者
+                    try:
+                        subprocess.run(["chown", current_user, str(file_path)], check=False, capture_output=True)
+                        results.append(f"✅ 嘗試修復 {file_path.name} 所有者")
+                    except Exception as e:
+                        results.append(f"⚠️ 修復 {file_path.name} 所有者失敗: {e}")
+
+                    # 方法2: 使用 chmod 修復權限
+                    try:
+                        subprocess.run(["chmod", "666", str(file_path)], check=False, capture_output=True)
+                        results.append(f"✅ 嘗試修復 {file_path.name} 權限")
+                    except Exception as e:
+                        results.append(f"⚠️ 修復 {file_path.name} 權限失敗: {e}")
+
+                    # 方法3: 使用 Python 修復權限
+                    try:
+                        file_path.chmod(0o666)
+                        results.append(f"✅ Python 修復 {file_path.name} 權限成功")
+                    except Exception as e:
+                        results.append(f"⚠️ Python 修復 {file_path.name} 權限失敗: {e}")
+
+                except Exception as e:
+                    results.append(f"❌ 處理 {file_path.name} 時發生錯誤: {e}")
+
+        return {
+            "status": "completed",
+            "timestamp": datetime.now(TZ_TAIPEI).isoformat(),
+            "results": results,
+            "message": "文件權限重置完成，請重新嘗試操作"
+        }
+
+    except Exception as e:
+        logger.error(f"Error in reset_file_permissions: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"重置文件權限失敗: {str(e)}"}
+        )
+
 @app.post("/api/fix-permissions")
 def fix_permissions():
     """修復數據文件權限（用於 Zeabur 部署後的權限問題）"""
     try:
         import stat
         import subprocess
+        import os
+        import shutil
 
         results = []
         files_to_fix = [ANALYSIS_PATH, MONITORED_STOCKS_PATH, TRADE_HISTORY_PATH]
-
-        # 首先嘗試修復目錄權限
         data_dir = ANALYSIS_PATH.parent
-        try:
-            # 使用 chmod 修復目錄權限
-            subprocess.run(["chmod", "-R", "777", str(data_dir)], check=False)
-            results.append(f"✅ 嘗試修復目錄權限: {data_dir}")
-        except Exception as e:
-            results.append(f"❌ 修復目錄權限失敗: {e}")
 
+        # 記錄環境信息
+        env_info = {
+            "user": os.environ.get("USER", "unknown"),
+            "home": os.environ.get("HOME", "unknown"),
+            "hostname": os.environ.get("HOSTNAME", "unknown"),
+            "zeabur": os.environ.get("ZEABUR", "not_set"),
+            "container_env": os.environ.get("CONTAINER_ENV", "not_set"),
+            "current_dir": os.getcwd(),
+            "data_dir": str(data_dir),
+            "data_dir_exists": data_dir.exists(),
+            "data_dir_is_dir": data_dir.is_dir() if data_dir.exists() else False
+        }
+
+        logger.info(f"環境信息: {env_info}")
+        results.append({"type": "env_info", "data": env_info})
+
+        # 多重策略修復權限
+
+        # 策略 1: 使用 chmod 修復目錄權限
+        try:
+            subprocess.run(["chmod", "-R", "777", str(data_dir)], check=False, capture_output=True)
+            results.append({"type": "action", "status": "success", "message": f"嘗試使用 chmod 修復目錄權限: {data_dir}"})
+        except Exception as e:
+            results.append({"type": "action", "status": "error", "message": f"chmod 修復失敗: {e}"})
+
+        # 策略 2: 使用 Python 的 os.chmod 修復
+        try:
+            os.chmod(str(data_dir), 0o777)
+            results.append({"type": "action", "status": "success", "message": f"使用 Python os.chmod 修復目錄權限"})
+        except Exception as e:
+            results.append({"type": "action", "status": "error", "message": f"Python os.chmod 修復失敗: {e}"})
+
+        # 策略 3: 嘗試使用 sudo (如果可用)
+        try:
+            subprocess.run(["sudo", "chmod", "-R", "777", str(data_dir)], check=False, capture_output=True)
+            results.append({"type": "action", "status": "success", "message": f"嘗試使用 sudo chmod 修復目錄權限"})
+        except Exception as e:
+            results.append({"type": "action", "status": "error", "message": f"sudo chmod 修復失敗: {e}"})
+
+        # 策略 4: 嘗試創建備份目錄並使用備份目錄
+        backup_dir = None
+        try:
+            # 嘗試在 /tmp 創建備份目錄
+            backup_dir = Path("/tmp/bullps_data")
+            backup_dir.mkdir(exist_ok=True, parents=True)
+            backup_dir.chmod(0o777)
+            results.append({"type": "action", "status": "success", "message": f"創建備份目錄: {backup_dir}"})
+        except Exception as e:
+            results.append({"type": "action", "status": "error", "message": f"創建備份目錄失敗: {e}"})
+            backup_dir = None
+
+        # 修復或創建文件
+        file_results = []
         for file_path in files_to_fix:
+            file_info = {
+                "file": str(file_path),
+                "exists": file_path.exists(),
+                "parent_exists": file_path.parent.exists(),
+                "parent_is_dir": file_path.parent.is_dir() if file_path.parent.exists() else False,
+                "parent_writable": os.access(str(file_path.parent), os.W_OK) if file_path.parent.exists() else False
+            }
+
             if file_path.exists():
                 try:
                     # 檢查當前權限
                     current_stat = file_path.stat()
                     current_mode = stat.filemode(current_stat.st_mode)
+                    file_info["current_mode"] = current_mode
+                    file_info["size"] = current_stat.st_size
 
-                    # 嘗試修復權限（設為可讀寫）
-                    file_path.chmod(0o664)
+                    # 嘗試修復權限（設為完全可讀寫）
+                    file_path.chmod(0o666)
 
-                    results.append({
-                        "file": str(file_path),
-                        "status": "success",
-                        "previous_mode": current_mode,
-                        "new_mode": "rw-rw-r--",
-                        "message": "權限修復成功"
-                    })
+                    # 檢查修復後的權限
+                    new_stat = file_path.stat()
+                    new_mode = stat.filemode(new_stat.st_mode)
+                    file_info["new_mode"] = new_mode
+                    file_info["status"] = "fixed"
+                    file_info["message"] = "權限修復成功"
 
-                except PermissionError as e:
-                    results.append({
-                        "file": str(file_path),
-                        "status": "permission_denied",
-                        "error": str(e),
-                        "message": "權限不足，無法修復"
-                    })
                 except Exception as e:
-                    results.append({
-                        "file": str(file_path),
-                        "status": "error",
-                        "error": str(e),
-                        "message": "修復失敗"
-                    })
+                    file_info["status"] = "error"
+                    file_info["error"] = str(e)
+                    file_info["message"] = "修復權限失敗"
+
+                    # 如果有備份目錄，嘗試複製到備份目錄
+                    if backup_dir:
+                        try:
+                            backup_file = backup_dir / file_path.name
+                            shutil.copy2(file_path, backup_file)
+                            backup_file.chmod(0o666)
+                            file_info["backup_file"] = str(backup_file)
+                            file_info["backup_status"] = "success"
+                        except Exception as backup_e:
+                            file_info["backup_status"] = "error"
+                            file_info["backup_error"] = str(backup_e)
             else:
-                results.append({
-                    "file": str(file_path),
-                    "status": "not_found",
-                    "message": "文件不存在"
-                })
+                # 文件不存在，嘗試創建
+                try:
+                    # 創建默認內容
+                    if file_path.name == "analysis_result.json":
+                        default_content = {"result": [], "timestamp": "", "analysis_date": "", "total_stocks": 0, "analyzed_stocks": 0}
+                    else:
+                        default_content = []
+
+                    # 嘗試創建文件
+                    file_path.write_text(json.dumps(default_content, indent=2, ensure_ascii=False), encoding='utf-8')
+                    file_path.chmod(0o666)
+
+                    file_info["status"] = "created"
+                    file_info["message"] = "文件創建成功"
+                except Exception as e:
+                    file_info["status"] = "creation_failed"
+                    file_info["error"] = str(e)
+                    file_info["message"] = "文件創建失敗"
+
+                    # 如果有備份目錄，嘗試在備份目錄創建
+                    if backup_dir:
+                        try:
+                            backup_file = backup_dir / file_path.name
+                            if file_path.name == "analysis_result.json":
+                                default_content = {"result": [], "timestamp": "", "analysis_date": "", "total_stocks": 0, "analyzed_stocks": 0}
+                            else:
+                                default_content = []
+
+                            backup_file.write_text(json.dumps(default_content, indent=2, ensure_ascii=False), encoding='utf-8')
+                            backup_file.chmod(0o666)
+                            file_info["backup_file"] = str(backup_file)
+                            file_info["backup_status"] = "created"
+                        except Exception as backup_e:
+                            file_info["backup_status"] = "error"
+                            file_info["backup_error"] = str(backup_e)
+
+            file_results.append(file_info)
 
         # 測試寫入權限
         test_results = []
         for file_path in files_to_fix:
+            test_info = {"file": str(file_path)}
+
             if file_path.exists():
                 try:
-                    # 嘗試寫入測試
+                    # 讀取當前內容
                     content = file_path.read_text(encoding='utf-8')
-                    file_path.write_text(content, encoding='utf-8')
-                    test_results.append({
-                        "file": str(file_path),
-                        "writable": True,
-                        "message": "寫入測試成功"
-                    })
-                except Exception as e:
-                    test_results.append({
-                        "file": str(file_path),
-                        "writable": False,
-                        "error": str(e),
-                        "message": "寫入測試失敗"
-                    })
+                    test_info["readable"] = True
 
+                    # 嘗試寫入測試
+                    file_path.write_text(content, encoding='utf-8')
+                    test_info["writable"] = True
+                    test_info["message"] = "讀寫測試成功"
+                except Exception as e:
+                    test_info["error"] = str(e)
+                    test_info["writable"] = False
+                    test_info["message"] = "寫入測試失敗"
+
+                    # 如果有備份文件，測試備份文件
+                    if backup_dir:
+                        backup_file = backup_dir / file_path.name
+                        if backup_file.exists():
+                            try:
+                                backup_content = backup_file.read_text(encoding='utf-8')
+                                backup_file.write_text(backup_content, encoding='utf-8')
+                                test_info["backup_writable"] = True
+                                test_info["backup_message"] = "備份文件讀寫測試成功"
+                            except Exception as backup_e:
+                                test_info["backup_writable"] = False
+                                test_info["backup_error"] = str(backup_e)
+                                test_info["backup_message"] = "備份文件讀寫測試失敗"
+            else:
+                test_info["exists"] = False
+                test_info["message"] = "文件不存在，無法測試"
+
+            test_results.append(test_info)
+
+        # 返回詳細結果
         return {
             "status": "completed",
             "timestamp": datetime.now(TZ_TAIPEI).isoformat(),
-            "permission_fixes": results,
-            "write_tests": test_results,
+            "environment": env_info,
+            "actions": results,
+            "files": file_results,
+            "tests": test_results,
+            "backup_dir": str(backup_dir) if backup_dir else None,
             "summary": {
                 "total_files": len(files_to_fix),
-                "fixed": len([r for r in results if r["status"] == "success"]),
-                "failed": len([r for r in results if r["status"] != "success"]),
-                "writable": len([t for t in test_results if t["writable"]])
+                "existing_files": len([f for f in file_results if f.get("exists", False)]),
+                "fixed_files": len([f for f in file_results if f.get("status") == "fixed"]),
+                "created_files": len([f for f in file_results if f.get("status") == "created"]),
+                "writable_files": len([t for t in test_results if t.get("writable", False)]),
+                "backup_dir_created": backup_dir is not None
             }
         }
 
@@ -526,6 +696,99 @@ def fix_permissions():
         return JSONResponse(
             status_code=500,
             content={"error": f"權限修復失敗: {str(e)}"}
+        )
+
+@app.get("/api/file-paths-status")
+def get_file_paths_status():
+    """獲取當前文件路徑狀態"""
+    try:
+        import os
+        from pathlib import Path
+
+        # 檢查路徑管理器狀態
+        try:
+            from backend.path_manager import path_manager
+            path_info = path_manager.get_info()
+        except ImportError:
+            path_info = {"error": "路徑管理器不可用"}
+
+        # 檢查實際使用的文件路徑
+        actual_paths = {
+            "analysis_path": str(ANALYSIS_PATH),
+            "monitored_stocks_path": str(MONITORED_STOCKS_PATH),
+            "trade_history_path": str(TRADE_HISTORY_PATH)
+        }
+
+        # 檢查文件狀態
+        file_status = {}
+        for name, path_str in actual_paths.items():
+            path = Path(path_str)
+            file_status[name] = {
+                "path": path_str,
+                "exists": path.exists(),
+                "readable": False,
+                "writable": False,
+                "size": 0
+            }
+
+            if path.exists():
+                try:
+                    # 測試讀取
+                    content = path.read_text(encoding='utf-8')
+                    file_status[name]["readable"] = True
+                    file_status[name]["size"] = len(content)
+
+                    # 測試寫入
+                    path.write_text(content, encoding='utf-8')
+                    file_status[name]["writable"] = True
+                except Exception as e:
+                    file_status[name]["error"] = str(e)
+
+        # 檢查備份目錄
+        backup_dir = Path("/tmp/bullps_data")
+        backup_status = {
+            "exists": backup_dir.exists(),
+            "writable": False,
+            "files": {}
+        }
+
+        if backup_dir.exists():
+            try:
+                test_file = backup_dir / "test.tmp"
+                test_file.write_text("test")
+                test_file.unlink()
+                backup_status["writable"] = True
+            except Exception:
+                pass
+
+            # 檢查備份文件
+            for filename in ["monitored_stocks.json", "trade_history.json", "analysis_result.json"]:
+                backup_file = backup_dir / filename
+                backup_status["files"][filename] = {
+                    "exists": backup_file.exists(),
+                    "size": backup_file.stat().st_size if backup_file.exists() else 0
+                }
+
+        return {
+            "status": "success",
+            "timestamp": datetime.now(TZ_TAIPEI).isoformat(),
+            "path_manager_info": path_info,
+            "actual_paths": actual_paths,
+            "file_status": file_status,
+            "backup_status": backup_status,
+            "environment": {
+                "container_env": os.environ.get("CONTAINER_ENV"),
+                "zeabur": os.environ.get("ZEABUR"),
+                "hostname": os.environ.get("HOSTNAME"),
+                "backup_dir_env": os.environ.get("BULLPS_BACKUP_DIR")
+            }
+        }
+
+    except Exception as e:
+        logger.error(f"Error in get_file_paths_status: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"獲取文件路徑狀態失敗: {str(e)}"}
         )
 
 

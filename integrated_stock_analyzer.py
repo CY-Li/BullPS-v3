@@ -2324,11 +2324,11 @@ def main():
             analysis_path = get_analysis_path()
             print(f"使用統一分析結果文件路徑: {analysis_path}")
         except ImportError:
-            # 回退到統一數據目錄
+            # 回退到根目錄
             if Path("/app").exists():
-                analysis_path = Path("/app/data/analysis_result.json")
+                analysis_path = Path("/app/analysis_result.json")
             else:
-                analysis_path = Path("data/analysis_result.json")
+                analysis_path = Path("analysis_result.json")
             print(f"使用回退分析結果文件路徑: {analysis_path}")
 
         # 確保目錄存在
@@ -2362,11 +2362,11 @@ def main():
         MONITORED_STOCKS_PATH = get_monitored_stocks_path()
         print(f"使用統一監控股票文件路徑: {MONITORED_STOCKS_PATH}")
     except ImportError:
-        # 回退到統一數據目錄
+        # 回退到根目錄
         if Path("/app").exists():
-            MONITORED_STOCKS_PATH = Path("/app/data/monitored_stocks.json")
+            MONITORED_STOCKS_PATH = Path("/app/monitored_stocks.json")
         else:
-            MONITORED_STOCKS_PATH = Path("data/monitored_stocks.json")
+            MONITORED_STOCKS_PATH = Path("monitored_stocks.json")
         print(f"使用回退監控股票文件路徑: {MONITORED_STOCKS_PATH}")
     
     try:

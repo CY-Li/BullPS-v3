@@ -16,6 +16,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-dev \
     curl \
     tzdata \
+    dos2unix \
     && rm -rf /var/lib/apt/lists/*
 
 # 設定系統時區為台灣時區
@@ -43,29 +44,46 @@ COPY fix-zeabur-permissions.sh ./
 COPY --from=frontend-build /app/frontend/dist ./frontend/dist
 RUN ls -la frontend/dist
 
+# 複製部署修復腳本
+COPY deploy-zeabur-fix.sh ./
+COPY fix-manual-override.sh ./
+COPY MANUAL_OVERRIDE_GUIDE.md ./
+
 # 設置環境變量
 ENV PYTHONUNBUFFERED=1
 ENV PORT=8080
 ENV PYTHONPATH=/app
 ENV ASGI_APPLICATION=backend.main:app
 ENV CONTAINER_ENV=true
+ENV BULLPS_BACKUP_DIR=/tmp/bullps_data
 
-# 創建統一數據目錄並設置權限
-RUN mkdir -p /app/data && \
-    useradd -m appuser && \
+# 創建用戶並設置權限
+RUN useradd -m appuser && \
     chmod +x /app/docker-entrypoint.sh && \
-    chmod +x /app/fix-zeabur-permissions.sh
+    chmod +x /app/fix-zeabur-permissions.sh && \
+    chmod +x /app/deploy-zeabur-fix.sh && \
+    chmod +x /app/fix-manual-override.sh && \
+    dos2unix /app/docker-entrypoint.sh && \
+    dos2unix /app/fix-zeabur-permissions.sh && \
+    dos2unix /app/deploy-zeabur-fix.sh && \
+    dos2unix /app/fix-manual-override.sh
 
-# 初始化統一數據文件
-RUN echo '[]' > /app/data/monitored_stocks.json && \
-    echo '[]' > /app/data/trade_history.json && \
-    echo '{"result": [], "timestamp": "", "analysis_date": "", "total_stocks": 0, "analyzed_stocks": 0}' > /app/data/analysis_result.json
+# 初始化根目錄數據文件
+RUN echo '[]' > /app/monitored_stocks.json && \
+    echo '[]' > /app/trade_history.json && \
+    echo '{"result": [], "timestamp": "", "analysis_date": "", "total_stocks": 0, "analyzed_stocks": 0}' > /app/analysis_result.json
 
-# 確保 /app/data 目錄完全可寫（Zeabur 權限修復）
+# 創建備份目錄並初始化備份文件
+RUN mkdir -p /tmp/bullps_data && \
+    echo '[]' > /tmp/bullps_data/monitored_stocks.json && \
+    echo '[]' > /tmp/bullps_data/trade_history.json && \
+    echo '{"result": [], "timestamp": "", "analysis_date": "", "total_stocks": 0, "analyzed_stocks": 0}' > /tmp/bullps_data/analysis_result.json
+
+# 確保 /app 目錄完全可寫（Zeabur 權限修復）
 RUN chown -R appuser:appuser /app && \
     chmod -R 755 /app && \
-    chmod 777 /app/data && \
-    chmod 666 /app/data/*.json && \
+    chmod 777 /app/*.json && \
+    chmod -R 777 /tmp/bullps_data && \
     echo "appuser ALL=(ALL) NOPASSWD: /bin/chown, /bin/chmod" >> /etc/sudoers
 
 # 切換到應用程式用戶
