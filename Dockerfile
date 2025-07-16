@@ -54,8 +54,6 @@ ENV PORT=8080
 ENV PYTHONPATH=/app
 ENV ASGI_APPLICATION=backend.main:app
 ENV CONTAINER_ENV=true
-ENV BULLPS_BACKUP_DIR=/tmp/bullps_data
-ENV BULLPS_FORCE_BACKUP_DIR=false
 
 # 創建用戶並設置權限
 RUN useradd -m appuser && \
@@ -73,18 +71,10 @@ RUN echo '[]' > /app/monitored_stocks.json && \
     echo '[]' > /app/trade_history.json && \
     echo '{"result": [], "timestamp": "", "analysis_date": "", "total_stocks": 0, "analyzed_stocks": 0}' > /app/analysis_result.json
 
-# 創建備份目錄並初始化備份文件
-RUN mkdir -p /tmp/bullps_data && \
-    echo '[]' > /tmp/bullps_data/monitored_stocks.json && \
-    echo '[]' > /tmp/bullps_data/trade_history.json && \
-    echo '{"result": [], "timestamp": "", "analysis_date": "", "total_stocks": 0, "analyzed_stocks": 0}' > /tmp/bullps_data/analysis_result.json
-
-# 確保 /app 目錄完全可寫（Zeabur 權限修復）
+# 確保 /app 目錄完全可寫
 RUN chown -R appuser:appuser /app && \
     chmod -R 755 /app && \
-    chmod 777 /app/*.json && \
-    chmod -R 777 /tmp/bullps_data && \
-    echo "appuser ALL=(ALL) NOPASSWD: /bin/chown, /bin/chmod" >> /etc/sudoers
+    chmod 666 /app/*.json
 
 # 切換到應用程式用戶
 USER appuser

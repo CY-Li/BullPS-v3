@@ -23,46 +23,10 @@ def get_unified_data_dir():
          os.path.exists("/proc/1/cgroup"))
     )
 
-    # 檢測 Zeabur 環境
-    is_zeabur = (
-        os.environ.get("ZEABUR") == "1" or
-        "zeabur" in os.environ.get("HOSTNAME", "").lower()
-    )
-
-    # 檢查是否強制使用備份目錄
-    force_backup = os.environ.get("BULLPS_FORCE_BACKUP_DIR") == "true"
-
     if is_container:
-        # 在 Zeabur 環境或強制使用備份目錄時，直接使用備份目錄
-        if is_zeabur or force_backup:
-            data_dir = Path("/tmp/bullps_data")
-            print(f"Using backup directory for Zeabur/forced backup: {data_dir}")
-
-            # 確保備份目錄存在
-            try:
-                data_dir.mkdir(parents=True, exist_ok=True)
-                os.chmod(str(data_dir), 0o777)
-            except Exception as e:
-                print(f"Warning: Cannot create backup directory: {e}")
-        else:
-            # 其他容器環境：嘗試使用 /app 根目錄，失敗則切換到備份目錄
-            data_dir = Path("/app")
-
-            # 測試是否可寫
-            try:
-                test_file = data_dir / "write_test.tmp"
-                test_file.write_text("test")
-                test_file.unlink()
-                print(f"Using unified root directory: {data_dir}")
-            except Exception:
-                print(f"Root directory not writable, switching to backup directory")
-                data_dir = Path("/tmp/bullps_data")
-                try:
-                    data_dir.mkdir(parents=True, exist_ok=True)
-                    os.chmod(str(data_dir), 0o777)
-                    print(f"Using backup directory: {data_dir}")
-                except Exception as e:
-                    print(f"Warning: Cannot create backup directory: {e}")
+        # 容器環境：統一使用 /app 根目錄
+        data_dir = Path("/app")
+        print(f"Using unified root directory: {data_dir}")
     else:
         # 本地環境：檢查是否有 data 目錄，如果有則使用，否則使用項目根目錄
         base_dir = Path(__file__).parent.parent
@@ -85,101 +49,25 @@ def get_unified_data_dir():
     return data_dir
 
 def get_unified_file_path(filename):
-    """獲取統一的文件路徑，包含權限錯誤處理和備份機制"""
+    """獲取統一的文件路徑"""
     data_dir = get_unified_data_dir()
-    primary_path = data_dir / filename
+    file_path = data_dir / filename
 
-    # 檢測容器環境
-    is_container = (
-        os.path.exists("/app") and
-        (os.environ.get("CONTAINER_ENV") == "true" or
-         os.environ.get("PORT") is not None or
-         os.path.exists("/proc/1/cgroup"))
-    )
-
-    # 如果是容器環境，設置備份路徑
-    if is_container:
-        backup_dir = Path("/tmp/bullps_data")
-        backup_path = backup_dir / filename
-    else:
-        backup_path = None
-
-    # 測試主要路徑是否可用
-    def test_file_writable(path):
-        """測試文件是否可寫"""
+    # 如果文件不存在，創建空文件
+    if not file_path.exists():
         try:
-            if path.exists():
-                # 文件存在，測試寫入權限
-                with open(path, 'r+', encoding='utf-8') as f:
-                    content = f.read()
-                    f.seek(0)
-                    f.write(content)
-                    f.truncate()
-                return True
+            if filename == "analysis_result.json":
+                empty_data = {"result": [], "timestamp": "", "analysis_date": "", "total_stocks": 0, "analyzed_stocks": 0}
             else:
-                # 文件不存在，嘗試創建
-                if filename == "analysis_result.json":
-                    empty_data = {"result": [], "timestamp": "", "analysis_date": "", "total_stocks": 0, "analyzed_stocks": 0}
-                else:
-                    empty_data = []
+                empty_data = []
 
-                with open(path, 'w', encoding='utf-8') as f:
-                    json.dump(empty_data, f, indent=2, ensure_ascii=False)
-                return True
-        except (PermissionError, OSError):
-            return False
+            with open(file_path, 'w', encoding='utf-8') as f:
+                json.dump(empty_data, f, indent=2, ensure_ascii=False)
+            print(f"Created empty unified file: {file_path}")
+        except (PermissionError, OSError) as e:
+            print(f"Cannot create unified file {file_path}: {e}")
 
-    # 嘗試使用主要路徑
-    if test_file_writable(primary_path):
-        print(f"✅ 使用主要路徑: {primary_path}")
-        return str(primary_path)
-
-    # 主要路徑不可用，嘗試備份路徑（僅在容器環境中）
-    if is_container and backup_path:
-        print(f"⚠️ 主要路徑不可寫: {primary_path}")
-        print(f"🔄 嘗試使用備份路徑: {backup_path}")
-
-        try:
-            # 確保備份目錄存在
-            backup_dir.mkdir(parents=True, exist_ok=True)
-
-            # 如果主要文件存在但不可寫，嘗試複製到備份位置
-            if primary_path.exists():
-                try:
-                    # 嘗試讀取主要文件內容並寫入備份文件
-                    with open(primary_path, 'r', encoding='utf-8') as f:
-                        content = f.read()
-                    with open(backup_path, 'w', encoding='utf-8') as f:
-                        f.write(content)
-                    print(f"✅ 已複製 {primary_path} 內容到 {backup_path}")
-                except Exception as copy_e:
-                    print(f"⚠️ 複製文件失敗: {copy_e}")
-                    # 創建默認內容
-                    if filename == "analysis_result.json":
-                        empty_data = {"result": [], "timestamp": "", "analysis_date": "", "total_stocks": 0, "analyzed_stocks": 0}
-                    else:
-                        empty_data = []
-
-                    with open(backup_path, 'w', encoding='utf-8') as f:
-                        json.dump(empty_data, f, indent=2, ensure_ascii=False)
-            else:
-                # 創建默認內容
-                if filename == "analysis_result.json":
-                    empty_data = {"result": [], "timestamp": "", "analysis_date": "", "total_stocks": 0, "analyzed_stocks": 0}
-                else:
-                    empty_data = []
-
-                with open(backup_path, 'w', encoding='utf-8') as f:
-                    json.dump(empty_data, f, indent=2, ensure_ascii=False)
-
-            print(f"✅ 使用備份路徑: {backup_path}")
-            return str(backup_path)
-        except Exception as backup_e:
-            print(f"❌ 備份路徑也無法使用: {backup_e}")
-
-    # 所有路徑都不可用，返回主要路徑讓調用者處理錯誤
-    print(f"❌ 所有路徑都不可用，返回主要路徑: {primary_path}")
-    return str(primary_path)
+    return str(file_path)
 
 # 使用統一路徑
 PORTFOLIO_FILE = get_unified_file_path("monitored_stocks.json")
@@ -293,27 +181,7 @@ def save_json_file(data, file_path):
         print(f"❌ 儲存至 {file_path} 時發生權限錯誤: {e}")
         print(f"   請檢查文件權限或磁盤空間")
 
-        # 嘗試保存到備份位置
-        try:
-            # 創建備份目錄
-            backup_dir = "/tmp/bullps_data"
-            os.makedirs(backup_dir, exist_ok=True)
-
-            # 設置備份文件路徑
-            backup_file = os.path.join(backup_dir, os.path.basename(file_path))
-
-            # 寫入備份文件
-            with open(backup_file, 'w', encoding='utf-8') as f:
-                json.dump(cleaned_data, f, indent=2, ensure_ascii=False, cls=NpEncoder)
-
-            # 設置備份文件權限
-            os.chmod(backup_file, 0o666)
-
-            print(f"✅ 已保存到備份位置: {backup_file}")
-            return True  # 備份保存成功
-        except Exception as backup_e:
-            print(f"❌ 備份保存也失敗: {backup_e}")
-            return False  # 所有保存嘗試都失敗
+        return False  # 保存失敗
     except Exception as e:
         print(f"❌ 儲存至 {file_path} 時發生未知錯誤: {e}")
         return False  # 保存失敗
