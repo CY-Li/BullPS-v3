@@ -6,10 +6,10 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BASE_DIR))
 
-from fastapi import FastAPI, BackgroundTasks, Request
+from fastapi import FastAPI, BackgroundTasks, Request, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from starlette.responses import FileResponse, JSONResponse
+from starlette.responses import FileResponse, JSONResponse, Response
 from contextlib import asynccontextmanager
 import subprocess
 import json
@@ -789,6 +789,240 @@ def get_file_paths_status():
         return JSONResponse(
             status_code=500,
             content={"error": f"獲取文件路徑狀態失敗: {str(e)}"}
+        )
+
+@app.post("/api/import-monitored-stocks")
+async def import_monitored_stocks(file: UploadFile = File(...)):
+    """匯入監控股票數據"""
+    try:
+        # 驗證文件類型
+        if not file.filename.endswith('.json'):
+            return JSONResponse(
+                status_code=400,
+                content={"error": "只支援 JSON 文件格式"}
+            )
+
+        # 讀取文件內容
+        content = await file.read()
+
+        # 驗證 JSON 格式
+        try:
+            data = json.loads(content.decode('utf-8'))
+        except json.JSONDecodeError as e:
+            return JSONResponse(
+                status_code=400,
+                content={"error": f"JSON 格式錯誤: {str(e)}"}
+            )
+
+        # 驗證數據結構
+        if not isinstance(data, list):
+            return JSONResponse(
+                status_code=400,
+                content={"error": "數據格式錯誤：應為股票列表數組"}
+            )
+
+        # 驗證每個股票項目的必要字段
+        required_fields = ['symbol', 'entry_price', 'entry_date']
+        for i, stock in enumerate(data):
+            if not isinstance(stock, dict):
+                return JSONResponse(
+                    status_code=400,
+                    content={"error": f"第 {i+1} 項數據格式錯誤：應為對象"}
+                )
+
+            for field in required_fields:
+                if field not in stock:
+                    return JSONResponse(
+                        status_code=400,
+                        content={"error": f"第 {i+1} 項缺少必要字段: {field}"}
+                    )
+
+        # 備份原有數據
+        try:
+            original_data = []
+            if MONITORED_STOCKS_PATH.exists():
+                original_content = MONITORED_STOCKS_PATH.read_text(encoding='utf-8')
+                if original_content.strip():
+                    original_data = json.loads(original_content)
+        except Exception as e:
+            logger.warning(f"無法讀取原有數據進行備份: {e}")
+
+        # 保存新數據
+        try:
+            MONITORED_STOCKS_PATH.write_text(
+                json.dumps(data, indent=2, ensure_ascii=False),
+                encoding='utf-8'
+            )
+            logger.info(f"成功匯入 {len(data)} 筆監控股票數據")
+
+            return {
+                "status": "success",
+                "message": f"成功匯入 {len(data)} 筆監控股票數據",
+                "imported_count": len(data),
+                "original_count": len(original_data),
+                "timestamp": datetime.now(TZ_TAIPEI).isoformat()
+            }
+
+        except Exception as e:
+            logger.error(f"保存匯入數據失敗: {e}")
+            return JSONResponse(
+                status_code=500,
+                content={"error": f"保存數據失敗: {str(e)}"}
+            )
+
+    except Exception as e:
+        logger.error(f"匯入監控股票數據失敗: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"匯入失敗: {str(e)}"}
+        )
+
+@app.post("/api/import-trade-history")
+async def import_trade_history(file: UploadFile = File(...)):
+    """匯入交易歷史數據"""
+    try:
+        # 驗證文件類型
+        if not file.filename.endswith('.json'):
+            return JSONResponse(
+                status_code=400,
+                content={"error": "只支援 JSON 文件格式"}
+            )
+
+        # 讀取文件內容
+        content = await file.read()
+
+        # 驗證 JSON 格式
+        try:
+            data = json.loads(content.decode('utf-8'))
+        except json.JSONDecodeError as e:
+            return JSONResponse(
+                status_code=400,
+                content={"error": f"JSON 格式錯誤: {str(e)}"}
+            )
+
+        # 驗證數據結構
+        if not isinstance(data, list):
+            return JSONResponse(
+                status_code=400,
+                content={"error": "數據格式錯誤：應為交易記錄列表數組"}
+            )
+
+        # 驗證每個交易記錄的必要字段
+        required_fields = ['symbol', 'entry_price', 'exit_price', 'entry_date', 'exit_date']
+        for i, trade in enumerate(data):
+            if not isinstance(trade, dict):
+                return JSONResponse(
+                    status_code=400,
+                    content={"error": f"第 {i+1} 項數據格式錯誤：應為對象"}
+                )
+
+            for field in required_fields:
+                if field not in trade:
+                    return JSONResponse(
+                        status_code=400,
+                        content={"error": f"第 {i+1} 項缺少必要字段: {field}"}
+                    )
+
+        # 備份原有數據
+        try:
+            original_data = []
+            if TRADE_HISTORY_PATH.exists():
+                original_content = TRADE_HISTORY_PATH.read_text(encoding='utf-8')
+                if original_content.strip():
+                    original_data = json.loads(original_content)
+        except Exception as e:
+            logger.warning(f"無法讀取原有數據進行備份: {e}")
+
+        # 保存新數據
+        try:
+            TRADE_HISTORY_PATH.write_text(
+                json.dumps(data, indent=2, ensure_ascii=False),
+                encoding='utf-8'
+            )
+            logger.info(f"成功匯入 {len(data)} 筆交易歷史數據")
+
+            return {
+                "status": "success",
+                "message": f"成功匯入 {len(data)} 筆交易歷史數據",
+                "imported_count": len(data),
+                "original_count": len(original_data),
+                "timestamp": datetime.now(TZ_TAIPEI).isoformat()
+            }
+
+        except Exception as e:
+            logger.error(f"保存匯入數據失敗: {e}")
+            return JSONResponse(
+                status_code=500,
+                content={"error": f"保存數據失敗: {str(e)}"}
+            )
+
+    except Exception as e:
+        logger.error(f"匯入交易歷史數據失敗: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"匯入失敗: {str(e)}"}
+        )
+
+@app.get("/api/export-monitored-stocks")
+def export_monitored_stocks():
+    """匯出監控股票數據"""
+    try:
+        if MONITORED_STOCKS_PATH.exists():
+            content = MONITORED_STOCKS_PATH.read_text(encoding='utf-8')
+            data = json.loads(content) if content.strip() else []
+        else:
+            data = []
+
+        # 生成文件名
+        timestamp = datetime.now(TZ_TAIPEI).strftime('%Y%m%d_%H%M%S')
+        filename = f"monitored_stocks_{timestamp}.json"
+
+        # 返回文件下載
+        return Response(
+            content=json.dumps(data, indent=2, ensure_ascii=False),
+            media_type="application/json",
+            headers={
+                "Content-Disposition": f"attachment; filename={filename}",
+                "Content-Type": "application/json; charset=utf-8"
+            }
+        )
+
+    except Exception as e:
+        logger.error(f"匯出監控股票數據失敗: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"匯出失敗: {str(e)}"}
+        )
+
+@app.get("/api/export-trade-history")
+def export_trade_history():
+    """匯出交易歷史數據"""
+    try:
+        if TRADE_HISTORY_PATH.exists():
+            content = TRADE_HISTORY_PATH.read_text(encoding='utf-8')
+            data = json.loads(content) if content.strip() else []
+        else:
+            data = []
+
+        # 生成文件名
+        timestamp = datetime.now(TZ_TAIPEI).strftime('%Y%m%d_%H%M%S')
+        filename = f"trade_history_{timestamp}.json"
+
+        # 返回文件下載
+        return Response(
+            content=json.dumps(data, indent=2, ensure_ascii=False),
+            media_type="application/json",
+            headers={
+                "Content-Disposition": f"attachment; filename={filename}",
+                "Content-Type": "application/json; charset=utf-8"
+            }
+        )
+
+    except Exception as e:
+        logger.error(f"匯出交易歷史數據失敗: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"匯出失敗: {str(e)}"}
         )
 
 

@@ -7,7 +7,9 @@ import RefreshIcon from "@mui/icons-material/Refresh";
 import Brightness4Icon from '@mui/icons-material/Brightness4';
 import Brightness7Icon from '@mui/icons-material/Brightness7';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
-import CloseIcon from '@mui/icons-material/Close'; // Import CloseIcon
+import CloseIcon from '@mui/icons-material/Close';
+import UploadIcon from '@mui/icons-material/Upload';
+import DownloadIcon from '@mui/icons-material/Download';
 import axios from "axios";
 import { blue, green, orange, red } from "@mui/material/colors";
 
@@ -481,8 +483,8 @@ function App() {
         {/* 頁籤內容 */}
         <Box sx={{ px: { xs: 2, sm: 3, md: 4 } }}>
             {currentTab === 0 && <AnalysisResultTab analysis={analysis} getRankColor={getRankColor} getRankIcon={getRankIcon} />}
-            {currentTab === 1 && <MonitoredStocksTab stocks={monitoredStocks} />}
-            {currentTab === 2 && <TradeHistoryTab trades={tradeHistory} />}
+            {currentTab === 1 && <MonitoredStocksTab stocks={monitoredStocks} onRefresh={fetchData} />}
+            {currentTab === 2 && <TradeHistoryTab trades={tradeHistory} onRefresh={fetchData} />}
         </Box>
 
       </Container>
@@ -648,50 +650,188 @@ const AnalysisResultTab = ({ analysis, getRankColor, getRankIcon }: any) => {
 };
 
 // 新元件：股票監控清單
-const MonitoredStocksTab = ({ stocks }: { stocks: MonitoredStock[] }) => (
-    <Box sx={{ overflowX: 'auto' }}>
-        <TableContainer component={Paper} elevation={2}>
-            <Table sx={{ minWidth: 650 }} aria-label="monitored stocks table">
-                <TableHead>
-                    <TableRow>
-                        <TableCell sx={{ whiteSpace: 'nowrap', minWidth: '200px' }}>股票代號</TableCell>
-                        <TableCell align="left" sx={{ whiteSpace: 'nowrap' }}>進場日期</TableCell>
-                        <TableCell align="left" sx={{ whiteSpace: 'nowrap' }}>進場價格</TableCell>
-                        <TableCell align="left" sx={{ whiteSpace: 'nowrap' }}>進場評分</TableCell>
-                        <TableCell align="left" sx={{ whiteSpace: 'nowrap' }}>進場信心度</TableCell>
-                        <TableCell align="left" sx={{ whiteSpace: 'nowrap' }}>抄底價位</TableCell>
-                        <TableCell sx={{ whiteSpace: 'nowrap' }}>進場條件</TableCell>
-                    </TableRow>
-                </TableHead>
-                <TableBody>
-                    {(stocks ?? []).map((stock) => (
-                        <TableRow key={stock.symbol} sx={{ '&:last-child td, &:last-child th': { border: 0 } }}>
-                            <TableCell component="th" scope="row">
-                                <Typography variant="subtitle2" fontWeight="bold" sx={{ fontSize: '1rem' }}>{stock.symbol}</Typography>
-                                <Typography variant="caption" color="text.secondary" sx={{ fontSize: '1rem' }}>{stock.name}</Typography>
-                            </TableCell>
-                            <TableCell align="left" sx={{ whiteSpace: 'nowrap', fontSize: '1rem' }}>{stock.entry_date}</TableCell>
-                            <TableCell align="left" sx={{ whiteSpace: 'nowrap', fontSize: '1rem' }}>${stock.entry_price?.toFixed(2)}</TableCell>
-                            <TableCell align="left" sx={{ whiteSpace: 'nowrap', fontSize: '1rem' }}>{stock.entry_composite_score?.toFixed(1)}</TableCell>
-                            <TableCell align="left" sx={{ whiteSpace: 'nowrap', fontSize: '1rem' }}>{stock.entry_confidence_score?.toFixed(1)}</TableCell>
-                            <TableCell align="left" sx={{ whiteSpace: 'nowrap', fontSize: '1rem' }}>${stock.long_signal_price_at_entry?.toFixed(2)}</TableCell>
-                            <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                                <Tooltip title={stock.entry_signal_conditions?.join(', ')}>
-                                    <Typography variant="caption" sx={{ fontSize: '1rem' }}>{(stock.entry_signal_conditions || []).slice(0, 2).join(', ')}...</Typography>
-                                </Tooltip>
-                            </TableCell>
-                        </TableRow>
-                    ))}
-                </TableBody>
-            </Table>
-        </TableContainer>
-    </Box>
-);
+const MonitoredStocksTab = ({ stocks, onRefresh }: { stocks: MonitoredStock[], onRefresh: () => void }) => {
+    const [importing, setImporting] = useState(false);
+    const [exporting, setExporting] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
+    // 匯出功能
+    const handleExport = async () => {
+        try {
+            setExporting(true);
+            const response = await axios.get('/api/export-monitored-stocks', {
+                responseType: 'blob'
+            });
+
+            // 創建下載連結
+            const url = window.URL.createObjectURL(new Blob([response.data]));
+            const link = document.createElement('a');
+            link.href = url;
+
+            // 從 response headers 獲取文件名，或使用默認名稱
+            const contentDisposition = response.headers['content-disposition'];
+            let filename = 'monitored_stocks.json';
+            if (contentDisposition) {
+                const filenameMatch = contentDisposition.match(/filename="?([^"]+)"?/);
+                if (filenameMatch) {
+                    filename = filenameMatch[1];
+                }
+            }
+
+            link.setAttribute('download', filename);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(url);
+
+        } catch (error) {
+            console.error('匯出失敗:', error);
+            alert('匯出失敗，請稍後再試');
+        } finally {
+            setExporting(false);
+        }
+    };
+
+    // 匯入功能
+    const handleImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        // 驗證文件類型
+        if (!file.name.endsWith('.json')) {
+            alert('請選擇 JSON 文件');
+            return;
+        }
+
+        // 確認覆蓋
+        if (stocks.length > 0) {
+            const confirmed = window.confirm(
+                `目前有 ${stocks.length} 筆監控股票數據。\n匯入新數據將完全覆蓋現有數據，此操作無法復原。\n\n確定要繼續嗎？`
+            );
+            if (!confirmed) {
+                // 清空文件選擇
+                if (fileInputRef.current) {
+                    fileInputRef.current.value = '';
+                }
+                return;
+            }
+        }
+
+        try {
+            setImporting(true);
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            const response = await axios.post('/api/import-monitored-stocks', formData, {
+                headers: {
+                    'Content-Type': 'multipart/form-data'
+                }
+            });
+
+            if (response.data.status === 'success') {
+                alert(`匯入成功！\n匯入了 ${response.data.imported_count} 筆監控股票數據`);
+                onRefresh(); // 刷新數據
+            } else {
+                alert('匯入失敗：' + (response.data.error || '未知錯誤'));
+            }
+
+        } catch (error: any) {
+            console.error('匯入失敗:', error);
+            const errorMessage = error.response?.data?.error || error.message || '未知錯誤';
+            alert('匯入失敗：' + errorMessage);
+        } finally {
+            setImporting(false);
+            // 清空文件選擇
+            if (fileInputRef.current) {
+                fileInputRef.current.value = '';
+            }
+        }
+    };
+
+    return (
+        <Box>
+            {/* 匯入/匯出按鈕 */}
+            <Box sx={{ mb: 2, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                <input
+                    type="file"
+                    accept=".json"
+                    onChange={handleImport}
+                    ref={fileInputRef}
+                    style={{ display: 'none' }}
+                />
+                <Button
+                    variant="outlined"
+                    startIcon={<UploadIcon />}
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={importing}
+                >
+                    {importing ? '匯入中...' : '匯入 JSON'}
+                </Button>
+                <Button
+                    variant="outlined"
+                    startIcon={<DownloadIcon />}
+                    onClick={handleExport}
+                    disabled={exporting}
+                >
+                    {exporting ? '匯出中...' : '匯出 JSON'}
+                </Button>
+                {stocks.length > 0 && (
+                    <Typography variant="body2" color="text.secondary" sx={{ alignSelf: 'center', ml: 1 }}>
+                        共 {stocks.length} 筆數據
+                    </Typography>
+                )}
+            </Box>
+
+            {/* 數據表格 */}
+            <Box sx={{ overflowX: 'auto' }}>
+                <TableContainer component={Paper} elevation={2}>
+                    <Table sx={{ minWidth: 650 }} aria-label="monitored stocks table">
+                        <TableHead>
+                            <TableRow>
+                                <TableCell sx={{ whiteSpace: 'nowrap', minWidth: '200px' }}>股票代號</TableCell>
+                                <TableCell align="left" sx={{ whiteSpace: 'nowrap' }}>進場日期</TableCell>
+                                <TableCell align="left" sx={{ whiteSpace: 'nowrap' }}>進場價格</TableCell>
+                                <TableCell align="left" sx={{ whiteSpace: 'nowrap' }}>進場評分</TableCell>
+                                <TableCell align="left" sx={{ whiteSpace: 'nowrap' }}>進場信心度</TableCell>
+                                <TableCell align="left" sx={{ whiteSpace: 'nowrap' }}>抄底價位</TableCell>
+                                <TableCell sx={{ whiteSpace: 'nowrap' }}>進場條件</TableCell>
+                            </TableRow>
+                        </TableHead>
+                        <TableBody>
+                            {(stocks ?? []).map((stock) => (
+                                <TableRow key={stock.symbol} sx={{ '&:last-child td, &:last-child th': { border: 0 } }}>
+                                    <TableCell component="th" scope="row">
+                                        <Typography variant="subtitle2" fontWeight="bold" sx={{ fontSize: '1rem' }}>{stock.symbol}</Typography>
+                                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: '1rem' }}>{stock.name}</Typography>
+                                    </TableCell>
+                                    <TableCell align="left" sx={{ whiteSpace: 'nowrap', fontSize: '1rem' }}>{stock.entry_date}</TableCell>
+                                    <TableCell align="left" sx={{ whiteSpace: 'nowrap', fontSize: '1rem' }}>${stock.entry_price?.toFixed(2)}</TableCell>
+                                    <TableCell align="left" sx={{ whiteSpace: 'nowrap', fontSize: '1rem' }}>{stock.entry_composite_score?.toFixed(1)}</TableCell>
+                                    <TableCell align="left" sx={{ whiteSpace: 'nowrap', fontSize: '1rem' }}>{stock.entry_confidence_score?.toFixed(1)}</TableCell>
+                                    <TableCell align="left" sx={{ whiteSpace: 'nowrap', fontSize: '1rem' }}>${stock.long_signal_price_at_entry?.toFixed(2)}</TableCell>
+                                    <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                                        <Tooltip title={stock.entry_signal_conditions?.join(', ')}>
+                                            <Typography variant="caption" sx={{ fontSize: '1rem' }}>{(stock.entry_signal_conditions || []).slice(0, 2).join(', ')}...</Typography>
+                                        </Tooltip>
+                                    </TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                </TableContainer>
+            </Box>
+        </Box>
+    );
+};
 
 // 新元件：歷史交易紀錄
-const TradeHistoryTab = ({ trades }: { trades: TradeHistory[] }) => {
+const TradeHistoryTab = ({ trades, onRefresh }: { trades: TradeHistory[], onRefresh: () => void }) => {
     const [openModal, setOpenModal] = useState(false);
     const [selectedTrade, setSelectedTrade] = useState<TradeHistory | null>(null);
+    const [importing, setImporting] = useState(false);
+    const [exporting, setExporting] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     const handleOpenModal = (trade: TradeHistory) => {
         setSelectedTrade(trade);
@@ -703,8 +843,135 @@ const TradeHistoryTab = ({ trades }: { trades: TradeHistory[] }) => {
         setSelectedTrade(null);
     };
 
+    // 匯出功能
+    const handleExport = async () => {
+        try {
+            setExporting(true);
+            const response = await axios.get('/api/export-trade-history', {
+                responseType: 'blob'
+            });
+
+            // 創建下載連結
+            const url = window.URL.createObjectURL(new Blob([response.data]));
+            const link = document.createElement('a');
+            link.href = url;
+
+            // 從 response headers 獲取文件名，或使用默認名稱
+            const contentDisposition = response.headers['content-disposition'];
+            let filename = 'trade_history.json';
+            if (contentDisposition) {
+                const filenameMatch = contentDisposition.match(/filename="?([^"]+)"?/);
+                if (filenameMatch) {
+                    filename = filenameMatch[1];
+                }
+            }
+
+            link.setAttribute('download', filename);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(url);
+
+        } catch (error) {
+            console.error('匯出失敗:', error);
+            alert('匯出失敗，請稍後再試');
+        } finally {
+            setExporting(false);
+        }
+    };
+
+    // 匯入功能
+    const handleImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        // 驗證文件類型
+        if (!file.name.endsWith('.json')) {
+            alert('請選擇 JSON 文件');
+            return;
+        }
+
+        // 確認覆蓋
+        if (trades.length > 0) {
+            const confirmed = window.confirm(
+                `目前有 ${trades.length} 筆交易歷史數據。\n匯入新數據將完全覆蓋現有數據，此操作無法復原。\n\n確定要繼續嗎？`
+            );
+            if (!confirmed) {
+                // 清空文件選擇
+                if (fileInputRef.current) {
+                    fileInputRef.current.value = '';
+                }
+                return;
+            }
+        }
+
+        try {
+            setImporting(true);
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            const response = await axios.post('/api/import-trade-history', formData, {
+                headers: {
+                    'Content-Type': 'multipart/form-data'
+                }
+            });
+
+            if (response.data.status === 'success') {
+                alert(`匯入成功！\n匯入了 ${response.data.imported_count} 筆交易歷史數據`);
+                onRefresh(); // 刷新數據
+            } else {
+                alert('匯入失敗：' + (response.data.error || '未知錯誤'));
+            }
+
+        } catch (error: any) {
+            console.error('匯入失敗:', error);
+            const errorMessage = error.response?.data?.error || error.message || '未知錯誤';
+            alert('匯入失敗：' + errorMessage);
+        } finally {
+            setImporting(false);
+            // 清空文件選擇
+            if (fileInputRef.current) {
+                fileInputRef.current.value = '';
+            }
+        }
+    };
+
     return (
         <>
+            {/* 匯入/匯出按鈕 */}
+            <Box sx={{ mb: 2, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                <input
+                    type="file"
+                    accept=".json"
+                    onChange={handleImport}
+                    ref={fileInputRef}
+                    style={{ display: 'none' }}
+                />
+                <Button
+                    variant="outlined"
+                    startIcon={<UploadIcon />}
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={importing}
+                >
+                    {importing ? '匯入中...' : '匯入 JSON'}
+                </Button>
+                <Button
+                    variant="outlined"
+                    startIcon={<DownloadIcon />}
+                    onClick={handleExport}
+                    disabled={exporting}
+                >
+                    {exporting ? '匯出中...' : '匯出 JSON'}
+                </Button>
+                {trades.length > 0 && (
+                    <Typography variant="body2" color="text.secondary" sx={{ alignSelf: 'center', ml: 1 }}>
+                        共 {trades.length} 筆數據
+                    </Typography>
+                )}
+            </Box>
+
+            {/* 數據表格 */}
             <Box sx={{ overflowX: 'auto' }}>
                 <TableContainer component={Paper} elevation={2}>
                 <Table sx={{ minWidth: 650 }} aria-label="trade history table">
@@ -731,7 +998,7 @@ const TradeHistoryTab = ({ trades }: { trades: TradeHistory[] }) => {
                                 <TableCell align="left" sx={{ fontSize: '1rem' }}>{new Date(trade.exit_date).toLocaleDateString()}</TableCell>
                                 <TableCell align="left" sx={{ fontSize: '1rem' }}>${trade.exit_price?.toFixed(2)}</TableCell>
                                 <TableCell align="left">
-                                    <Chip 
+                                    <Chip
                                         label={`${trade.profit_loss_percent?.toFixed(2)}%`}
                                         color={trade.profit_loss_percent >= 0 ? "success" : "error"}
                                         size="small"
