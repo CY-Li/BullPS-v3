@@ -118,7 +118,7 @@ def load_json_file(file_path):
         return []
 
 def save_json_file(data, file_path):
-    """通用 JSON 檔案儲存函式，包含錯誤處理和備份機制，以及權限修復"""
+    """通用 JSON 檔案儲存函式"""
     class NpEncoder(json.JSONEncoder):
         def default(self, obj):
             if isinstance(obj, np.integer):
@@ -147,30 +147,7 @@ def save_json_file(data, file_path):
         # 確保目錄存在
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
 
-        # 嘗試修復文件權限 - 多重策略
-        if os.path.exists(file_path):
-            # 策略1: 使用 os.chmod
-            try:
-                os.chmod(file_path, 0o666)
-            except Exception:
-                pass
 
-            # 策略2: 使用 subprocess (如果可用)
-            try:
-                import subprocess
-                subprocess.run(["chmod", "666", str(file_path)], check=False, capture_output=True)
-            except Exception:
-                pass
-
-            # 策略3: 檢查文件是否可寫
-            if not os.access(file_path, os.W_OK):
-                print(f"⚠️ 文件 {file_path} 不可寫，嘗試更強力的權限修復")
-                try:
-                    # 嘗試使用 sudo (如果可用)
-                    subprocess.run(["sudo", "chmod", "666", str(file_path)], check=False, capture_output=True)
-                    subprocess.run(["sudo", "chown", "$(whoami)", str(file_path)], shell=True, check=False, capture_output=True)
-                except Exception:
-                    pass
 
         # 寫入文件
         with open(file_path, 'w', encoding='utf-8') as f:
@@ -178,9 +155,7 @@ def save_json_file(data, file_path):
 
         return True  # 保存成功
     except (PermissionError, OSError) as e:
-        print(f"❌ 儲存至 {file_path} 時發生權限錯誤: {e}")
-        print(f"   請檢查文件權限或磁盤空間")
-
+        print(f"❌ 儲存至 {file_path} 時發生錯誤: {e}")
         return False  # 保存失敗
     except Exception as e:
         print(f"❌ 儲存至 {file_path} 時發生未知錯誤: {e}")

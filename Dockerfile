@@ -38,15 +38,10 @@ COPY multi_timeframe_analyzer.py ./
 COPY api_error_handler.py ./
 COPY backtester.py ./
 COPY docker-entrypoint.sh ./
-COPY fix-zeabur-permissions.sh ./
 
 # 複製前端構建產物
 COPY --from=frontend-build /app/frontend/dist ./frontend/dist
 RUN ls -la frontend/dist
-
-# 複製部署修復腳本
-COPY deploy-zeabur-fix.sh ./
-COPY fix-manual-override.sh ./
 
 # 設置環境變量
 ENV PYTHONUNBUFFERED=1
@@ -58,13 +53,7 @@ ENV CONTAINER_ENV=true
 # 創建用戶並設置權限
 RUN useradd -m appuser && \
     chmod +x /app/docker-entrypoint.sh && \
-    chmod +x /app/fix-zeabur-permissions.sh && \
-    chmod +x /app/deploy-zeabur-fix.sh && \
-    chmod +x /app/fix-manual-override.sh && \
-    dos2unix /app/docker-entrypoint.sh && \
-    dos2unix /app/fix-zeabur-permissions.sh && \
-    dos2unix /app/deploy-zeabur-fix.sh && \
-    dos2unix /app/fix-manual-override.sh
+    dos2unix /app/docker-entrypoint.sh
 
 # 初始化根目錄數據文件
 RUN echo '[]' > /app/monitored_stocks.json && \

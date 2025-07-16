@@ -282,36 +282,7 @@ function App() {
     }
   };
 
-  const handleFixPermissions = async () => {
-    setLoading(true);
-    setStatus('updating');
-    setStatusMessage("正在修復文件權限...");
 
-    try {
-      const response = await axios.post("/api/fix-permissions");
-
-      if (response.data.status === "completed") {
-        const summary = response.data.summary;
-        setStatus('completed');
-        setStatusMessage(`權限修復完成：${summary.fixed}/${summary.total_files} 個文件修復成功`);
-
-        // 3秒後清除狀態
-        setTimeout(() => {
-          setStatus('idle');
-          setStatusMessage("");
-        }, 3000);
-      } else {
-        setStatus('error');
-        setStatusMessage("權限修復失敗");
-      }
-    } catch (error) {
-      setStatus('error');
-      setStatusMessage("權限修復失敗");
-      console.error('Error fixing permissions:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const getStatusColor = (status: ProcessingStatus) => {
     switch (status) {
@@ -384,15 +355,7 @@ function App() {
              '立即更新'}
           </Button>
 
-          <Button
-            variant="outlined"
-            startIcon={<span>🔧</span>}
-            onClick={handleFixPermissions}
-            disabled={loading || (analysisStatus?.is_running ?? false)}
-            sx={{ ml: 1 }}
-          >
-            修復權限
-          </Button>
+
           
           {status !== 'idle' && (
             <Chip
