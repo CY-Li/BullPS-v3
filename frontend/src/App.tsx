@@ -440,6 +440,7 @@ function App() {
                 <Tab label="分析結果摘要" />
                 <Tab label={`股票監控清單 (${monitoredStocks.length})`} />
                 <Tab label={`歷史交易紀錄 (${tradeHistory.length})`} />
+                <Tab label="回測勝率" />
             </Tabs>
         </Box>
 
@@ -448,6 +449,7 @@ function App() {
             {currentTab === 0 && <AnalysisResultTab analysis={analysis} getRankColor={getRankColor} getRankIcon={getRankIcon} />}
             {currentTab === 1 && <MonitoredStocksTab stocks={monitoredStocks} onRefresh={fetchData} />}
             {currentTab === 2 && <TradeHistoryTab trades={tradeHistory} onRefresh={fetchData} />}
+            {currentTab === 3 && <BacktestTab />}
         </Box>
 
       </Container>
@@ -1047,6 +1049,478 @@ const ExitReasonModal = ({ trade, open, handleClose }: { trade: TradeHistory | n
     );
 };
 
+// 新元件：回測勝率
+const BacktestTab = () => {
+    const [symbol, setSymbol] = useState('');
+    const [startDate, setStartDate] = useState('2024-01-01');
+    const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
+    const [isRunning, setIsRunning] = useState(false);
+    const [status, setStatus] = useState<any>(null);
+    const [result, setResult] = useState<any>(null);
+    const [logs, setLogs] = useState<string[]>([]);
+    const logsEndRef = useRef<HTMLDivElement>(null);
 
+    // 自動滾動到日誌底部
+    useEffect(() => {
+        logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, [logs]);
+
+    // 輪詢回測狀態 - 更頻繁的更新
+    useEffect(() => {
+        let interval: NodeJS.Timeout;
+
+        if (isRunning) {
+            interval = setInterval(async () => {
+                try {
+                    const response = await axios.get('/api/backtest-status');
+                    const statusData = response.data;
+                    setStatus(statusData);
+
+                    // 即時更新日誌 - 每次都完全替換以確保即時性
+                    const newLogs = statusData.logs || [];
+                    setLogs(newLogs);
+
+                    if (statusData.result) {
+                        setResult(statusData.result);
+                    }
+
+                    if (!statusData.is_running) {
+                        setIsRunning(false);
+                    }
+                } catch (error) {
+                    console.error('獲取回測狀態失敗:', error);
+                }
+            }, 200); // 改為每200毫秒檢查一次，更即時
+        }
+
+        return () => {
+            if (interval) clearInterval(interval);
+        };
+    }, [isRunning]);
+
+    const handleRunBacktest = async () => {
+        if (!symbol.trim()) {
+            alert('請輸入股票代號');
+            return;
+        }
+
+        if (!startDate || !endDate) {
+            alert('請選擇開始和結束日期');
+            return;
+        }
+
+        if (new Date(startDate) >= new Date(endDate)) {
+            alert('開始日期必須早於結束日期');
+            return;
+        }
+
+        try {
+            setIsRunning(true);
+            setResult(null);
+            setLogs([]);
+            setStatus(null);
+
+            const response = await axios.post('/api/run-backtest', {
+                symbol: symbol.trim().toUpperCase(),
+                start_date: startDate,
+                end_date: endDate
+            });
+
+            if (response.data.status === 'already_running') {
+                alert('回測正在進行中，請稍候');
+                setIsRunning(false);
+            }
+        } catch (error: any) {
+            console.error('啟動回測失敗:', error);
+            alert(error.response?.data?.error || '啟動回測失敗');
+            setIsRunning(false);
+        }
+    };
+
+    return (
+        <Box>
+            {/* 參數設置區塊 */}
+            <Card sx={{ mb: 3 }}>
+                <CardContent>
+                    <Typography variant="h6" gutterBottom>
+                        參數設置
+                    </Typography>
+                    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr 1fr auto' }, gap: 2, alignItems: 'end' }}>
+                        <Box>
+                            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                                股票代號
+                            </Typography>
+                            <input
+                                type="text"
+                                value={symbol}
+                                onChange={(e) => setSymbol(e.target.value.toUpperCase())}
+                                placeholder="例如: AAPL"
+                                disabled={isRunning}
+                                style={{
+                                    width: '100%',
+                                    padding: '12px',
+                                    border: '1px solid #ccc',
+                                    borderRadius: '4px',
+                                    fontSize: '16px'
+                                }}
+                            />
+                        </Box>
+                        <Box>
+                            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                                開始日期
+                            </Typography>
+                            <input
+                                type="date"
+                                value={startDate}
+                                onChange={(e) => setStartDate(e.target.value)}
+                                disabled={isRunning}
+                                style={{
+                                    width: '100%',
+                                    padding: '12px',
+                                    border: '1px solid #ccc',
+                                    borderRadius: '4px',
+                                    fontSize: '16px'
+                                }}
+                            />
+                        </Box>
+                        <Box>
+                            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                                結束日期
+                            </Typography>
+                            <input
+                                type="date"
+                                value={endDate}
+                                onChange={(e) => setEndDate(e.target.value)}
+                                disabled={isRunning}
+                                style={{
+                                    width: '100%',
+                                    padding: '12px',
+                                    border: '1px solid #ccc',
+                                    borderRadius: '4px',
+                                    fontSize: '16px'
+                                }}
+                            />
+                        </Box>
+                        <Button
+                            variant="contained"
+                            onClick={handleRunBacktest}
+                            disabled={isRunning}
+                            sx={{ height: '48px' }}
+                        >
+                            {isRunning ? '回測中...' : '開始回測'}
+                        </Button>
+                    </Box>
+                </CardContent>
+            </Card>
+
+            {/* 處理進度區塊 */}
+            {(isRunning || status) && (
+                <Card sx={{ mb: 3 }}>
+                    <CardContent>
+                        <Typography variant="h6" gutterBottom>
+                            處理進度
+                        </Typography>
+
+                        {status && (
+                            <Box sx={{ mb: 2 }}>
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
+                                    <Typography variant="body2" color="text.secondary">
+                                        {status.current_step}
+                                    </Typography>
+                                    <Typography variant="body2">
+                                        {status.message}
+                                    </Typography>
+                                </Box>
+                                <LinearProgress
+                                    variant="determinate"
+                                    value={status.progress}
+                                    sx={{ height: 8, borderRadius: 4 }}
+                                />
+                                <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                                    {status.progress}%
+                                </Typography>
+                            </Box>
+                        )}
+
+                        {/* 即時日誌顯示 */}
+                        <Box>
+                            <Box
+                                sx={{
+                                    bgcolor: '#1e1e1e',
+                                    color: '#00ff00',
+                                    p: 2,
+                                    borderRadius: 1,
+                                    fontFamily: '"Consolas", "Monaco", "Courier New", monospace',
+                                    fontSize: '0.8rem',
+                                    maxHeight: '400px',
+                                    minHeight: '200px',
+                                    overflowY: 'auto',
+                                    border: '1px solid #333',
+                                    position: 'relative',
+                                    '&::-webkit-scrollbar': {
+                                        width: '8px',
+                                    },
+                                    '&::-webkit-scrollbar-track': {
+                                        background: '#2e2e2e',
+                                    },
+                                    '&::-webkit-scrollbar-thumb': {
+                                        background: '#555',
+                                        borderRadius: '4px',
+                                    },
+                                    '&::-webkit-scrollbar-thumb:hover': {
+                                        background: '#777',
+                                    },
+                                }}
+                            >
+                                {/* 日誌內容 */}
+                                {logs.length > 0 ? (
+                                    logs.map((log, index) => (
+                                        <Box key={index} sx={{
+                                            mb: 0.5,
+                                            wordBreak: 'break-all',
+                                            animation: 'fadeIn 0.3s ease-in',
+                                            '@keyframes fadeIn': {
+                                                from: { opacity: 0, transform: 'translateY(10px)' },
+                                                to: { opacity: 1, transform: 'translateY(0)' }
+                                            }
+                                        }}>
+                                            <Typography component="span" sx={{
+                                                color: log.includes('錯誤') || log.includes('失敗') ? '#ff6b6b' :
+                                                       log.includes('成功') || log.includes('完成') ? '#51cf66' :
+                                                       log.includes('警告') ? '#ffd43b' :
+                                                       log.includes('進場信號') ? '#74c0fc' :
+                                                       '#00ff00',
+                                                fontSize: '0.8rem',
+                                                fontFamily: 'inherit'
+                                            }}>
+                                                {log}
+                                            </Typography>
+                                        </Box>
+                                    ))
+                                ) : (
+                                    <Box sx={{
+                                        color: '#666',
+                                        fontStyle: 'italic',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: 1
+                                    }}>
+                                        <Box sx={{
+                                            width: 8,
+                                            height: 8,
+                                            bgcolor: '#00ff00',
+                                            borderRadius: '50%',
+                                            animation: 'blink 1s infinite',
+                                            '@keyframes blink': {
+                                                '0%, 50%': { opacity: 1 },
+                                                '51%, 100%': { opacity: 0 }
+                                            }
+                                        }} />
+                                        等待回測開始...
+                                    </Box>
+                                )}
+
+                                {/* 游標 */}
+                                {isRunning && (
+                                    <Box sx={{
+                                        display: 'inline-block',
+                                        width: '8px',
+                                        height: '16px',
+                                        bgcolor: '#00ff00',
+                                        animation: 'blink 1s infinite',
+                                        '@keyframes blink': {
+                                            '0%, 50%': { opacity: 1 },
+                                            '51%, 100%': { opacity: 0 }
+                                        }
+                                    }} />
+                                )}
+
+                                <div ref={logsEndRef} />
+                            </Box>
+                        </Box>
+                    </CardContent>
+                </Card>
+            )}
+
+            {/* 回測績效報告 */}
+            {result && (
+                <Box>
+                    {/* 基本信息 */}
+                    <Card elevation={2} sx={{ mb: 2 }}>
+                        <CardContent>
+                            <Typography variant="h6" sx={{ fontWeight: 'bold', mb: 2 }}>
+                                回測績效報告
+                            </Typography>
+                            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr 1fr' }, gap: 2 }}>
+                                <Box>
+                                    <Typography variant="body2" color="text.secondary">股票代號</Typography>
+                                    <Typography variant="h6" fontWeight="bold">{result.symbol}</Typography>
+                                </Box>
+                                <Box>
+                                    <Typography variant="body2" color="text.secondary">回測期間</Typography>
+                                    <Typography variant="body1">{result.start_date} ~ {result.end_date}</Typography>
+                                </Box>
+                                <Box>
+                                    <Typography variant="body2" color="text.secondary">總交易次數</Typography>
+                                    <Typography variant="h6" fontWeight="bold">{result.total_trades}</Typography>
+                                </Box>
+                            </Box>
+                        </CardContent>
+                    </Card>
+
+                    {/* 核心指標 */}
+                    <Card elevation={2} sx={{ mb: 2 }}>
+                        <CardContent>
+                            <Typography variant="h6" sx={{ fontWeight: 'bold', mb: 2 }}>
+                                績效指標
+                            </Typography>
+                            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', sm: '1fr 1fr 1fr 1fr' }, gap: 2 }}>
+                                <Box sx={{ textAlign: 'center' }}>
+                                    <Typography variant="h4" color="primary.main" fontWeight="bold">
+                                        {result.total_trades}
+                                    </Typography>
+                                    <Typography variant="body2" color="text.secondary">
+                                        總交易次數
+                                    </Typography>
+                                </Box>
+                                <Box sx={{ textAlign: 'center' }}>
+                                    <Typography
+                                        variant="h4"
+                                        fontWeight="bold"
+                                        color={result.win_rate >= 50 ? 'success.main' : 'error.main'}
+                                    >
+                                        {result.win_rate}%
+                                    </Typography>
+                                    <Typography variant="body2" color="text.secondary">
+                                        勝率
+                                    </Typography>
+                                </Box>
+                                <Box sx={{ textAlign: 'center' }}>
+                                    <Typography
+                                        variant="h4"
+                                        fontWeight="bold"
+                                        color={result.total_pnl >= 0 ? 'success.main' : 'error.main'}
+                                    >
+                                        ${result.total_pnl}
+                                    </Typography>
+                                    <Typography variant="body2" color="text.secondary">
+                                        總盈虧
+                                    </Typography>
+                                </Box>
+                                <Box sx={{ textAlign: 'center' }}>
+                                    <Typography variant="h4" color="warning.main" fontWeight="bold">
+                                        {result.profit_factor}
+                                    </Typography>
+                                    <Typography variant="body2" color="text.secondary">
+                                        盈虧比
+                                    </Typography>
+                                </Box>
+                            </Box>
+                        </CardContent>
+                    </Card>
+
+                    {/* 詳細指標 */}
+                    <Card elevation={2} sx={{ mb: 2 }}>
+                        <CardContent>
+                            <Typography variant="h6" sx={{ fontWeight: 'bold', mb: 2 }}>
+                                詳細分析
+                            </Typography>
+                            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 3 }}>
+                                <Box>
+                                    <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mb: 1 }}>
+                                        盈利分析
+                                    </Typography>
+                                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                                        <Typography variant="body2" color="text.secondary">平均盈利:</Typography>
+                                        <Typography variant="body1" fontWeight="bold" color="success.main">
+                                            ${result.avg_profit}
+                                        </Typography>
+                                    </Box>
+                                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                                        <Typography variant="body2" color="text.secondary">平均虧損:</Typography>
+                                        <Typography variant="body1" fontWeight="bold" color="error.main">
+                                            ${result.avg_loss}
+                                        </Typography>
+                                    </Box>
+                                </Box>
+                                <Box>
+                                    <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mb: 1 }}>
+                                        時間分析
+                                    </Typography>
+                                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                                        <Typography variant="body2" color="text.secondary">平均持倉天數:</Typography>
+                                        <Typography variant="body1" fontWeight="bold">
+                                            {result.avg_holding_period} 天
+                                        </Typography>
+                                    </Box>
+                                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                                        <Typography variant="body2" color="text.secondary">回測天數:</Typography>
+                                        <Typography variant="body1" fontWeight="bold">
+                                            {Math.ceil((new Date(result.end_date).getTime() - new Date(result.start_date).getTime()) / (1000 * 60 * 60 * 24))} 天
+                                        </Typography>
+                                    </Box>
+                                </Box>
+                            </Box>
+                        </CardContent>
+                    </Card>
+
+                    {/* 交易明細 */}
+                    {result.trades && result.trades.length > 0 && (
+                        <Card elevation={2}>
+                            <CardContent>
+                                <Typography variant="h6" sx={{ fontWeight: 'bold', mb: 2 }}>
+                                    交易明細 ({result.trades.length} 筆)
+                                </Typography>
+                                <TableContainer component={Paper} elevation={2}>
+                                    <Table sx={{ minWidth: 650 }} aria-label="backtest trades table">
+                                        <TableHead>
+                                            <TableRow>
+                                                <TableCell>股票</TableCell>
+                                                <TableCell>進場日期</TableCell>
+                                                <TableCell>出場日期</TableCell>
+                                                <TableCell align="right">進場價</TableCell>
+                                                <TableCell align="right">出場價</TableCell>
+                                                <TableCell align="right">盈虧</TableCell>
+                                                <TableCell align="right">持倉天數</TableCell>
+                                            </TableRow>
+                                        </TableHead>
+                                        <TableBody>
+                                            {result.trades.slice(-10).map((trade: any, index: number) => (
+                                                <TableRow key={index} sx={{ '&:last-child td, &:last-child th': { border: 0 } }}>
+                                                    <TableCell>
+                                                        <Typography variant="subtitle2" fontWeight="bold">
+                                                            {trade.symbol}
+                                                        </Typography>
+                                                    </TableCell>
+                                                    <TableCell>{trade.entry_date}</TableCell>
+                                                    <TableCell>{trade.exit_date}</TableCell>
+                                                    <TableCell align="right">${trade.entry_price?.toFixed(2)}</TableCell>
+                                                    <TableCell align="right">${trade.exit_price?.toFixed(2)}</TableCell>
+                                                    <TableCell align="right">
+                                                        <Typography
+                                                            variant="body2"
+                                                            fontWeight="bold"
+                                                            color={trade.profit_loss_usd >= 0 ? 'success.main' : 'error.main'}
+                                                        >
+                                                            ${trade.profit_loss_usd?.toFixed(2)}
+                                                        </Typography>
+                                                        <Typography variant="caption" color="text.secondary">
+                                                            ({trade.profit_loss_pct?.toFixed(2)}%)
+                                                        </Typography>
+                                                    </TableCell>
+                                                    <TableCell align="right">{trade.holding_period_days} 天</TableCell>
+                                                </TableRow>
+                                            ))}
+                                        </TableBody>
+                                    </Table>
+                                </TableContainer>
+                            </CardContent>
+                        </Card>
+                    )}
+                </Box>
+            )}
+        </Box>
+    );
+};
 
 export default App;

@@ -760,6 +760,271 @@ def export_trade_history():
             content={"error": f"匯出失敗: {str(e)}"}
         )
 
+# 回測狀態管理
+backtest_status = {
+    "is_running": False,
+    "progress": 0,
+    "message": "",
+    "current_step": "",
+    "logs": [],
+    "result": None
+}
+
+def update_backtest_status(message: str, progress: int, step: str = "", log_message: str = ""):
+    """更新回測狀態"""
+    global backtest_status
+    backtest_status["message"] = message
+    backtest_status["progress"] = progress
+    backtest_status["current_step"] = step
+
+    if log_message:
+        timestamp = datetime.now(TZ_TAIPEI).strftime('%H:%M:%S')
+        backtest_status["logs"].append(f"[{timestamp}] {log_message}")
+        # 保持最新的100條日誌
+        if len(backtest_status["logs"]) > 100:
+            backtest_status["logs"] = backtest_status["logs"][-100:]
+
+@app.get("/api/backtest-status")
+def get_backtest_status():
+    """獲取回測狀態"""
+    return backtest_status
+
+@app.post("/api/run-backtest")
+def run_backtest(request: dict):
+    """執行回測"""
+    global backtest_status
+
+    if backtest_status["is_running"]:
+        return {"status": "already_running", "message": "回測正在進行中"}
+
+    # 驗證參數
+    symbol = request.get("symbol", "").strip().upper()
+    start_date = request.get("start_date", "")
+    end_date = request.get("end_date", "")
+
+    if not symbol:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "請輸入股票代號"}
+        )
+
+    if not start_date or not end_date:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "請輸入開始和結束日期"}
+        )
+
+    try:
+        # 驗證日期格式
+        from datetime import datetime
+        datetime.strptime(start_date, '%Y-%m-%d')
+        datetime.strptime(end_date, '%Y-%m-%d')
+    except ValueError:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "日期格式錯誤，請使用 YYYY-MM-DD 格式"}
+        )
+
+    # 重置狀態
+    backtest_status = {
+        "is_running": True,
+        "progress": 0,
+        "message": "準備開始回測...",
+        "current_step": "初始化",
+        "logs": [],
+        "result": None
+    }
+
+    logger.info(f"開始回測: {symbol}, {start_date} to {end_date}")
+
+    # 使用線程池執行回測任務，避免阻塞API
+    import threading
+    thread = threading.Thread(target=run_backtest_task, args=(symbol, start_date, end_date))
+    thread.daemon = True
+    thread.start()
+
+    return {"status": "started", "message": "回測已開始"}
+
+def run_backtest_task(symbol: str, start_date: str, end_date: str):
+    """執行回測任務 - 改為同步函數在後台線程中執行"""
+    global backtest_status
+
+    try:
+        update_backtest_status("正在初始化回測環境...", 5, "初始化", "開始回測程序")
+
+        # 導入必要的模組
+        import yfinance as yf
+        import backtester
+        import pandas as pd
+        import time
+
+        update_backtest_status("正在下載股票數據...", 15, "數據下載", f"正在下載 {symbol} 的歷史數據")
+
+        # 驗證股票代號並下載數據
+        try:
+            stock_data = yf.download(symbol, start=start_date, end=end_date, progress=False, auto_adjust=True)
+            if stock_data.empty:
+                raise ValueError(f"無法獲取股票 {symbol} 的數據")
+
+            update_backtest_status("數據下載完成", 25, "數據驗證", f"成功下載 {len(stock_data)} 天的數據")
+
+        except Exception as e:
+            update_backtest_status("數據下載失敗", 0, "錯誤", f"下載失敗: {str(e)}")
+            backtest_status["is_running"] = False
+            return
+
+        update_backtest_status("正在準備回測程序...", 35, "程序準備", "設置回測參數")
+
+        # 保存原始值
+        original_start = backtester.START_DATE
+        original_end = backtester.END_DATE
+
+        try:
+            # 修改全局變量
+            backtester.START_DATE = start_date
+            backtester.END_DATE = end_date
+
+            update_backtest_status("載入股票數據...", 45, "數據載入", f"載入 {symbol} 的歷史數據")
+
+            # 使用原始的preload_data和Backtester
+            watchlist = [symbol]
+            all_data = backtester.preload_data(watchlist, backtester.START_DATE, backtester.END_DATE)
+
+            if not all_data:
+                update_backtest_status("數據載入失敗", 0, "錯誤", "無法載入股票數據")
+                backtest_status["is_running"] = False
+                return
+
+            # 創建自定義的Backtester來即時輸出日誌
+            class RealTimeBacktester(backtester.Backtester):
+                def __init__(self, symbols, all_historical_data):
+                    super().__init__(symbols, all_historical_data)
+                    self.total_days = len(self.trading_days)
+                    self.current_day_index = 0
+
+                def run(self):
+                    update_backtest_status("開始逐日模擬交易...", 55, "模擬交易", f"共 {self.total_days} 個交易日")
+
+                    for i in range(len(self.trading_days) - 1):
+                        current_day = self.trading_days[i]
+                        next_day = self.trading_days[i+1]
+                        self.current_day_index = i
+
+                        # 計算進度
+                        progress = 55 + int((i / self.total_days) * 30)  # 55% 到 85%
+
+                        # 即時更新日誌
+                        date_str = current_day.strftime('%Y-%m-%d')
+
+                        # 檢查出場
+                        exit_count_before = len([t for t in self.trade_log if t.get('exit_date')])
+                        self.check_and_execute_exits(current_day, next_day)
+                        exit_count_after = len([t for t in self.trade_log if t.get('exit_date')])
+
+                        if exit_count_after > exit_count_before:
+                            for trade in self.trade_log[exit_count_before:exit_count_after]:
+                                pnl = trade.get('profit_loss_usd', 0)
+                                pnl_pct = trade.get('profit_loss_pct', 0)
+                                result_text = "獲利" if pnl > 0 else "虧損"
+                                update_backtest_status(f"出場信號", progress, "交易執行",
+                                                     f"🔴 {trade['symbol']} 出場 @ ${trade.get('exit_price', 0):.2f} ({result_text}: ${pnl:.2f}, {pnl_pct:.1f}%)")
+
+                        # 檢查進場
+                        entry_count_before = len([t for t in self.trade_log if t.get('entry_date')])
+                        self.check_and_execute_entries(current_day, next_day)
+                        entry_count_after = len([t for t in self.trade_log if t.get('entry_date')])
+
+                        if entry_count_after > entry_count_before:
+                            for trade in self.trade_log[entry_count_before:entry_count_after]:
+                                update_backtest_status(f"進場信號", progress, "交易執行",
+                                                     f"🟢 {trade['symbol']} 進場 @ ${trade.get('entry_price', 0):.2f}")
+
+                        # 更頻繁的進度更新
+                        if i % 3 == 0 or i < 15:  # 前15天每天更新，之後每3天更新
+                            current_trades = len(self.trade_log)
+                            update_backtest_status(f"模擬交易日: {date_str}", progress, "模擬交易",
+                                                 f"[{i+1}/{self.total_days}] 檢查 {date_str} 交易機會")
+
+                        # 添加延遲讓前端有時間獲取更新
+                        if i % 5 == 0:
+                            time.sleep(0.05)  # 50毫秒延遲，讓前端有時間獲取狀態
+
+                    update_backtest_status("模擬交易完成", 85, "計算結果", f"總共產生 {len(self.trade_log)} 筆交易")
+
+            # 創建並運行回測器
+            bt = RealTimeBacktester(watchlist, all_data)
+            bt.run()
+
+            # 處理結果
+            if bt.trade_log:
+                df_log = pd.DataFrame(bt.trade_log)
+
+                total_trades = len(df_log)
+                winning_trades = df_log[df_log['profit_loss_usd'] > 0]
+                losing_trades = df_log[df_log['profit_loss_usd'] <= 0]
+
+                win_rate = (len(winning_trades) / total_trades) * 100 if total_trades > 0 else 0
+                total_pnl = df_log['profit_loss_usd'].sum()
+
+                avg_profit = winning_trades['profit_loss_usd'].mean() if len(winning_trades) > 0 else 0
+                avg_loss = losing_trades['profit_loss_usd'].mean() if len(losing_trades) > 0 else 0
+
+                profit_factor = abs(winning_trades['profit_loss_usd'].sum() / losing_trades['profit_loss_usd'].sum()) if len(losing_trades) > 0 and losing_trades['profit_loss_usd'].sum() != 0 else float('inf')
+
+                avg_holding_period = df_log['holding_period_days'].mean()
+
+                backtest_result = {
+                    "symbol": symbol,
+                    "start_date": start_date,
+                    "end_date": end_date,
+                    "total_trades": total_trades,
+                    "win_rate": round(win_rate, 2),
+                    "total_pnl": round(total_pnl, 2),
+                    "avg_profit": round(avg_profit, 2),
+                    "avg_loss": round(avg_loss, 2),
+                    "profit_factor": round(profit_factor, 2) if profit_factor != float('inf') else "∞",
+                    "avg_holding_period": round(avg_holding_period, 1),
+                    "trades": df_log.to_dict('records')
+                }
+
+                backtest_status["result"] = backtest_result
+                update_backtest_status("回測完成", 100, "完成",
+                                     f"✅ 完成！{total_trades} 筆交易，勝率 {win_rate:.1f}%，總盈虧 ${total_pnl:.2f}")
+            else:
+                backtest_result = {
+                    "symbol": symbol,
+                    "start_date": start_date,
+                    "end_date": end_date,
+                    "total_trades": 0,
+                    "win_rate": 0,
+                    "total_pnl": 0,
+                    "avg_profit": 0,
+                    "avg_loss": 0,
+                    "profit_factor": 0,
+                    "avg_holding_period": 0,
+                    "trades": []
+                }
+                backtest_status["result"] = backtest_result
+                update_backtest_status("回測完成", 100, "完成", "✅ 回測完成，期間內未產生交易信號")
+
+        finally:
+            # 恢復原始值
+            backtester.START_DATE = original_start
+            backtester.END_DATE = original_end
+
+    except Exception as e:
+        logger.error(f"直接回測執行失敗: {e}")
+        update_backtest_status("回測執行失敗", 0, "錯誤", f"執行錯誤: {str(e)}")
+        backtest_status["is_running"] = False
+        return
+
+    except Exception as e:
+        logger.error(f"回測任務失敗: {e}")
+        update_backtest_status("回測失敗", 0, "錯誤", f"系統錯誤: {str(e)}")
+
+    finally:
+        backtest_status["is_running"] = False
+
 
 
 # 靜態檔案 - 放在 API 路由之後

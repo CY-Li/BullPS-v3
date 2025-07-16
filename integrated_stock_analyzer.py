@@ -336,9 +336,9 @@ class IntegratedStockAnalyzer:
         """
         try:
             # 獲取市場指標數據
-            spy_data = yf.download('SPY', period='30d', progress=False)
-            qqq_data = yf.download('QQQ', period='30d', progress=False)
-            vix_data = yf.download('^VIX', period='30d', progress=False)
+            spy_data = yf.download('SPY', period='30d', progress=False, auto_adjust=True)
+            qqq_data = yf.download('QQQ', period='30d', progress=False, auto_adjust=True)
+            vix_data = yf.download('^VIX', period='30d', progress=False, auto_adjust=True)
 
             if spy_data.empty or qqq_data.empty:
                 return {'sentiment': 'neutral', 'score': 50, 'factors': ['數據不足']}

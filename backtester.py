@@ -47,7 +47,7 @@ def preload_data(symbols, start, end):
     preload_start_date = (pd.to_datetime(start) - timedelta(days=90)).strftime('%Y-%m-%d')
     
     all_data = {}
-    df_all = yf.download(symbols, start=preload_start_date, end=end, progress=True)
+    df_all = yf.download(symbols, start=preload_start_date, end=end, progress=True, auto_adjust=True)
     
     if df_all.empty:
         print("[ERROR] 下載數據失敗，請檢查網路連線或股票代號。")
@@ -111,7 +111,7 @@ class Backtester:
         self.portfolio = {}
         self.trade_log = []
         
-        spy_data = yf.download('SPY', start=START_DATE, end=END_DATE, progress=False)
+        spy_data = yf.download('SPY', start=START_DATE, end=END_DATE, progress=False, auto_adjust=True)
         self.trading_days = spy_data.index
 
     def run(self):
@@ -263,7 +263,7 @@ class Backtester:
             if composite_score >= composite_threshold and confidence_score >= confidence_threshold:
                 print(f"   - [進場信號] {symbol}: 綜合評分 {composite_score:.2f}, 信心度 {confidence_score:.2f}")
                 print(f"     市場情緒: {market_sentiment['sentiment']} ({market_score:.0f}分)")
-                print(f"     進場閾值: 綜合≥{composite_threshold}, 信心≥{confidence_threshold}")
+                print(f"     進場閾值: 綜合>={composite_threshold}, 信心>={confidence_threshold}")
 
                 if next_day not in self.all_data[symbol].index:
                     print(f"   - [買入失敗] {symbol} 在 {next_day.strftime('%Y-%m-%d')} 無數據。")
