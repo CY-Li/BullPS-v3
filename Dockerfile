@@ -47,7 +47,6 @@ RUN ls -la frontend/dist
 # 複製部署修復腳本
 COPY deploy-zeabur-fix.sh ./
 COPY fix-manual-override.sh ./
-COPY MANUAL_OVERRIDE_GUIDE.md ./
 
 # 設置環境變量
 ENV PYTHONUNBUFFERED=1
