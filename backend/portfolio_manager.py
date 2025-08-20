@@ -13,70 +13,16 @@ from integrated_stock_analyzer import IntegratedStockAnalyzer
 # --- 常數定義 --- 
 
 # --- 常數定義 ---
-def get_unified_data_dir():
-    """獲取統一的數據目錄"""
-    # 檢測容器環境
-    is_container = (
-        os.path.exists("/app") and
-        (os.environ.get("CONTAINER_ENV") == "true" or
-         os.environ.get("PORT") is not None or
-         os.path.exists("/proc/1/cgroup"))
-    )
-
-    if is_container:
-        # 容器環境：統一使用 /app 根目錄
-        data_dir = Path("/app")
-        print(f"Using unified root directory: {data_dir}")
-    else:
-        # 本地環境：檢查是否有 data 目錄，如果有則使用，否則使用項目根目錄
-        base_dir = Path(__file__).parent.parent
-        local_data_dir = base_dir / "data"
-
-        if local_data_dir.exists() or os.environ.get("BULLPS_USE_LOCAL_DATA_DIR") == "true":
-            data_dir = local_data_dir
-            print(f"Using local data directory: {data_dir}")
-
-            # 確保 data 目錄存在
-            try:
-                os.makedirs(str(data_dir), exist_ok=True)
-            except Exception as e:
-                print(f"Warning: Cannot create local data directory: {e}")
-        else:
-            # 使用項目根目錄
-            data_dir = base_dir
-            print(f"Using unified root directory: {data_dir}")
-
-    return data_dir
-
-def get_unified_file_path(filename):
-    """獲取統一的文件路徑"""
-    data_dir = get_unified_data_dir()
-    file_path = data_dir / filename
-
-    # 如果文件不存在，創建空文件
-    if not file_path.exists():
-        try:
-            if filename == "analysis_result.json":
-                empty_data = {"result": [], "timestamp": "", "analysis_date": "", "total_stocks": 0, "analyzed_stocks": 0}
-            else:
-                empty_data = []
-
-            with open(file_path, 'w', encoding='utf-8') as f:
-                json.dump(empty_data, f, indent=2, ensure_ascii=False)
-            print(f"Created empty unified file: {file_path}")
-        except (PermissionError, OSError) as e:
-            print(f"Cannot create unified file {file_path}: {e}")
-
-    return str(file_path)
+from backend.path_manager import path_manager
 
 # 使用統一路徑
-PORTFOLIO_FILE = get_unified_file_path("monitored_stocks.json")
-ANALYSIS_RESULT_FILE = get_unified_file_path("analysis_result.json")
-TRADE_HISTORY_FILE = get_unified_file_path("trade_history.json")
+PORTFOLIO_FILE = path_manager.get_monitored_stocks_path()
+ANALYSIS_RESULT_FILE = path_manager.get_analysis_path()
+TRADE_HISTORY_FILE = path_manager.get_trade_history_path()
 
-print(f"Portfolio file: {PORTFOLIO_FILE}")
-print(f"Analysis result file: {ANALYSIS_RESULT_FILE}")
-print(f"Trade history file: {TRADE_HISTORY_FILE}")
+print(f"Using unified monitored stocks file path: {PORTFOLIO_FILE}")
+print(f"Using unified analysis result file path: {ANALYSIS_RESULT_FILE}")
+print(f"Using unified trade history file path: {TRADE_HISTORY_FILE}")
 
 # --- 策略參數 (可調整) ---
 

@@ -189,7 +189,7 @@ def run_stock_analysis():
         
         # 階段3: 投資組合管理
         update_status("正在檢查持倉與更新交易紀錄...", 80, "投資組合管理中")
-        subprocess.run(["python", "backend/portfolio_manager.py"], check=True, cwd=BASE_DIR)
+        subprocess.run(["python", "backend/portfolio_manager.py"], check=True, cwd=BASE_DIR, env=os.environ)
         
         # 階段4: 報告生成中
         update_status("正在生成最終報告...", 95, "報告生成中")
