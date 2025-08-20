@@ -1,0 +1,182 @@
+[
+  {
+    "symbol": "BIDU",
+    "entry_date": "2025-07-21",
+    "entry_price": 88.80999755859375,
+    "exit_date": "2025-07-22",
+    "exit_price": 92.44999694824219,
+    "profit_loss_percent": 4.0986369662344515,
+    "status": "closed",
+    "exit_reasons": [
+      "出場信心度達到 1.00"
+    ],
+    "entry_composite_score": 92.81336399969202,
+    "entry_confidence_score": 87.0,
+    "holding_days": 1
+  },
+  {
+    "symbol": "BRK-B",
+    "entry_date": "2025-07-22",
+    "entry_price": 478.1300048828125,
+    "exit_date": "2025-07-23",
+    "exit_price": 482.6300048828125,
+    "profit_loss_percent": 0.9411666187113544,
+    "status": "closed",
+    "exit_reasons": [
+      "出場信心度達到 1.00"
+    ],
+    "entry_composite_score": 95.96589034650995,
+    "entry_confidence_score": 87.0,
+    "holding_days": 1
+  },
+  {
+    "symbol": "PG",
+    "entry_date": "2025-07-22",
+    "entry_price": 158.32000732421875,
+    "exit_date": "2025-07-23",
+    "exit_price": 158.27999877929688,
+    "profit_loss_percent": -0.025270681575919024,
+    "status": "closed",
+    "exit_reasons": [
+      "出場信心度達到 1.00"
+    ],
+    "entry_composite_score": 95.41003726606627,
+    "entry_confidence_score": 82.5,
+    "holding_days": 1
+  },
+  {
+    "symbol": "BRK-B",
+    "entry_date": "2025-07-23",
+    "entry_price": 482.6300048828125,
+    "exit_date": "2025-07-24",
+    "exit_price": 480.6000061035156,
+    "profit_loss_percent": -0.42061180588840086,
+    "status": "closed",
+    "exit_reasons": [
+      "出場信心度達到 1.00"
+    ],
+    "entry_composite_score": 96.27856010080991,
+    "entry_confidence_score": 91.5,
+    "holding_days": 1
+  },
+  {
+    "symbol": "CELH",
+    "entry_date": "2025-07-23",
+    "entry_price": 45.15999984741211,
+    "exit_date": "2025-07-24",
+    "exit_price": 46.310001373291016,
+    "profit_loss_percent": 2.5465047160419934,
+    "status": "closed",
+    "exit_reasons": [
+      "出場信心度達到 1.00"
+    ],
+    "entry_composite_score": 90.82922009650797,
+    "entry_confidence_score": 81.0,
+    "holding_days": 1
+  },
+  {
+    "symbol": "WMT",
+    "entry_date": "2025-07-24",
+    "entry_price": 96.5999984741211,
+    "exit_date": "2025-07-25",
+    "exit_price": 97.47000122070312,
+    "profit_loss_percent": 0.900623975491162,
+    "status": "closed",
+    "exit_reasons": [
+      "出場信心度達到 1.00"
+    ],
+    "entry_composite_score": 95.5752602714683,
+    "entry_confidence_score": 88.5,
+    "holding_days": 1
+  },
+  {
+    "symbol": "PANW",
+    "entry_date": "2025-07-24",
+    "entry_price": 201.16000366210938,
+    "exit_date": "2025-07-25",
+    "exit_price": 203.27000427246094,
+    "profit_loss_percent": 1.0489165698643321,
+    "status": "closed",
+    "exit_reasons": [
+      "出場信心度達到 1.00"
+    ],
+    "entry_composite_score": 93.80451793038482,
+    "entry_confidence_score": 81.0,
+    "holding_days": 1
+  },
+  {
+    "symbol": "BRK-B",
+    "entry_date": "2025-07-24",
+    "entry_price": 480.6000061035156,
+    "exit_date": "2025-07-25",
+    "exit_price": 484.07000732421875,
+    "profit_loss_percent": 0.7220143938066715,
+    "status": "closed",
+    "exit_reasons": [
+      "出場信心度達到 1.00"
+    ],
+    "entry_composite_score": 95.90866890625844,
+    "entry_confidence_score": 82.5,
+    "holding_days": 1
+  },
+  {
+    "symbol": "DIA",
+    "entry_date": "2025-07-24",
+    "entry_price": 447.1099853515625,
+    "exit_date": "2025-07-25",
+    "exit_price": 449.0199890136719,
+    "profit_loss_percent": 0.42718877338593536,
+    "status": "closed",
+    "exit_reasons": [
+      "出場信心度達到 1.00"
+    ],
+    "entry_composite_score": 92.41892040522092,
+    "entry_confidence_score": 82.35,
+    "holding_days": 1
+  },
+  {
+    "symbol": "OKTA",
+    "entry_date": "2025-07-24",
+    "entry_price": 97.88999938964844,
+    "exit_date": "2025-07-25",
+    "exit_price": 101.0999984741211,
+    "profit_loss_percent": 3.2791900137779586,
+    "status": "closed",
+    "exit_reasons": [
+      "出場信心度達到 1.00"
+    ],
+    "entry_composite_score": 91.91381449937454,
+    "entry_confidence_score": 81.0,
+    "holding_days": 1
+  },
+  {
+    "symbol": "XLP",
+    "entry_date": "2025-07-24",
+    "entry_price": 81.36000061035156,
+    "exit_date": "2025-07-25",
+    "exit_price": 81.5,
+    "profit_loss_percent": 0.17207397811969186,
+    "status": "closed",
+    "exit_reasons": [
+      "出場信心度達到 1.00"
+    ],
+    "entry_composite_score": 94.68896999970634,
+    "entry_confidence_score": 84.0,
+    "holding_days": 1
+  },
+  {
+    "symbol": "UPS",
+    "entry_date": "2025-07-24",
+    "entry_price": 102.52999877929688,
+    "exit_date": "2025-07-25",
+    "exit_price": 103.55999755859375,
+    "profit_loss_percent": 1.004582845567004,
+    "status": "closed",
+    "exit_reasons": [
+      "出場信心度達到 1.00"
+    ],
+    "entry_composite_score": 96.36804237179304,
+    "entry_confidence_score": 84.0,
+    "holding_days": 1
+  }
+]

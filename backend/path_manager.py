@@ -20,6 +20,19 @@ class PathManager:
 
     def _get_unified_data_dir(self):
         """獲取統一的數據目錄"""
+        # 優先檢查持久化數據目錄環境變數
+        persistent_data_dir = os.environ.get("BULLPS_PERSISTENT_DATA_DIR")
+        if persistent_data_dir:
+            data_dir = Path(persistent_data_dir)
+            print(f"📁 使用環境變數指定的持久化數據目錄: {data_dir}")
+            # 確保目錄存在
+            try:
+                data_dir.mkdir(parents=True, exist_ok=True)
+                print(f"✅ 持久化數據目錄創建成功: {data_dir}")
+            except Exception as e:
+                print(f"⚠️ 創建持久化數據目錄失敗: {e}")
+            return data_dir
+
         # 檢測容器環境
         is_container = (
             Path("/app").exists() and

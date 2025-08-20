@@ -391,6 +391,9 @@ def get_monitored_stocks():
                 return []
 
             data = json.loads(content)
+            # If data is a dictionary, convert its values to a list
+            if isinstance(data, dict):
+                return list(data.values())
             return data
         else:
             # 文件不存在，創建空數組

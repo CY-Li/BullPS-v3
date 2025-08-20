@@ -121,12 +121,15 @@ def save_json_file(data, file_path):
     """通用 JSON 檔案儲存函式"""
     class NpEncoder(json.JSONEncoder):
         def default(self, obj):
+            import pandas as pd
             if isinstance(obj, np.integer):
                 return int(obj)
             if isinstance(obj, np.floating):
                 return float(obj)
             if isinstance(obj, np.ndarray):
                 return obj.tolist()
+            if isinstance(obj, pd.Timestamp):
+                return obj.isoformat()
             return super(NpEncoder, self).default(obj)
 
     # 處理 NaN 值，將其轉換為 None
@@ -145,7 +148,9 @@ def save_json_file(data, file_path):
     # 嘗試保存到主要位置
     try:
         # 確保目錄存在
-        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        dir_name = os.path.dirname(file_path)
+        if dir_name:
+            os.makedirs(dir_name, exist_ok=True)
 
 
 
@@ -174,11 +179,14 @@ def get_latest_analysis(symbol):
 
 # --- 核心出場評估邏輯 ---
 
-def evaluate_smart_sar_exit(trade, current_analysis):
+def evaluate_smart_sar_exit(trade, current_analysis, current_dt=None):
     """
     智能SAR停損評估
     結合多重確認機制，避免假突破
     """
+    from datetime import datetime
+    if current_dt is None:
+        current_dt = datetime.now()
     current_price = current_analysis.get('current_price')
     current_sar = current_analysis.get('sar')
     entry_price = trade.get('entry_price')
@@ -230,10 +238,8 @@ def evaluate_smart_sar_exit(trade, current_analysis):
         }
 
     # 計算持倉天數
-    from datetime import datetime
     try:
         entry_dt = datetime.strptime(entry_date, '%Y-%m-%d')
-        current_dt = datetime.now()
         holding_days = (current_dt - entry_dt).days
     except:
         holding_days = 0
