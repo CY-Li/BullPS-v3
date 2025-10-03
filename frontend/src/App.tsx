@@ -764,7 +764,7 @@ const MonitoredStocksTab = ({ stocks, onRefresh }: { stocks: MonitoredStock[], o
                             </TableRow>
                         </TableHead>
                         <TableBody>
-                            {(stocks ?? []).map((stock) => (
+                            {(stocks ? [...stocks].sort((a, b) => new Date(b.entry_date).getTime() - new Date(a.entry_date).getTime()) : []).map((stock) => (
                                 <TableRow key={stock.symbol} sx={{ '&:last-child td, &:last-child th': { border: 0 } }}>
                                     <TableCell component="th" scope="row">
                                         <Typography variant="subtitle2" fontWeight="bold" sx={{ fontSize: '1rem' }}>{stock.symbol}</Typography>
@@ -952,7 +952,7 @@ const TradeHistoryTab = ({ trades, onRefresh }: { trades: TradeHistory[], onRefr
                         </TableRow>
                     </TableHead>
                     <TableBody>
-                        {(trades ?? []).map((trade, index) => (
+                        {(trades ? [...trades].sort((a, b) => new Date(b.exit_date).getTime() - new Date(a.exit_date).getTime()) : []).map((trade, index) => (
                             <TableRow key={`${trade.symbol}-${index}`} sx={{ '&:last-child td, &:last-child th': { border: 0 } }}>
                                 <TableCell component="th" scope="row">
                                     <Typography variant="subtitle2" fontWeight="bold" sx={{ fontSize: '1rem' }}>{trade.symbol}</Typography>

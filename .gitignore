@@ -61,3 +61,8 @@ frontend/dist/
 # Test files
 test_*.py
 *_test.py
+
+# BMAD
+.bmad-core/
+.gemini/
+web-bundles/
