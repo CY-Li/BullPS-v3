@@ -418,18 +418,77 @@ def get_monitored_stocks():
             content={"error": "Failed to read monitored stocks"}
         )
 
+from collections import defaultdict
+
 @app.get("/api/trade-history")
 def get_trade_history():
     try:
-        if TRADE_HISTORY_PATH.exists():
-            data = json.loads(TRADE_HISTORY_PATH.read_text(encoding='utf-8'))
-            return data
-        return []
+        if not TRADE_HISTORY_PATH.exists():
+            return {"trades": [], "yearly_summary": {}}
+
+        content = TRADE_HISTORY_PATH.read_text(encoding='utf-8').strip()
+        if not content:
+            return {"trades": [], "yearly_summary": {}}
+
+        trades = json.loads(content)
+
+        # 根據您的要求進行簡易統計
+        yearly_summary = defaultdict(lambda: {
+            "total_pnl_percent": 0,
+            "trade_count": 0,
+            "winning_trades": 0,
+        })
+
+        for trade in trades:
+            try:
+                # 從 exit_date 獲取年份
+                exit_date = datetime.fromisoformat(trade['exit_date'].replace('Z', '+00:00'))
+                entry_date = datetime.fromisoformat(trade['entry_date'].replace('Z', '+00:00'))
+                year = exit_date.year
+                
+                pnl_percent = trade.get('profit_loss_percent')
+
+                # 排除當天進出且損益為0的交易
+                if entry_date.date() == exit_date.date() and pnl_percent == 0:
+                    continue
+
+                if pnl_percent is None:
+                    continue # 如果沒有損益百分比，則跳過此筆交易
+
+                # 1. 總盈虧：加總損益 %
+                yearly_summary[year]["total_pnl_percent"] += pnl_percent
+                # 2. 交易次數
+                yearly_summary[year]["trade_count"] += 1
+                # 3. 獲利次數
+                if pnl_percent > 0:
+                    yearly_summary[year]["winning_trades"] += 1
+
+            except (ValueError, KeyError) as e:
+                logger.warning(f"Skipping trade due to invalid data: {trade}, error: {e}")
+                continue
+
+        # 4. 計算勝率並整理最終格式
+        final_summary = {}
+        for year, data in yearly_summary.items():
+            win_rate = (data["winning_trades"] / data["trade_count"]) * 100 if data["trade_count"] > 0 else 0
+            final_summary[str(year)] = {
+                "year": year,
+                "total_pnl_percent": round(data["total_pnl_percent"], 2),
+                "trade_count": data["trade_count"],
+                "winning_trades": data["winning_trades"],
+                "win_rate": round(win_rate, 2)
+            }
+        
+        # 按年份倒序排序
+        sorted_summary = dict(sorted(final_summary.items(), key=lambda item: item[0], reverse=True))
+
+        return {"trades": trades, "yearly_summary": sorted_summary}
+
     except Exception as e:
-        logger.error(f"Error reading trade history: {e}")
+        logger.error(f"Error processing trade history: {e}")
         return JSONResponse(
             status_code=500,
-            content={"error": "Failed to read trade history"}
+            content={"error": "Failed to process trade history"}
         )
 
 

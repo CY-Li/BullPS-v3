@@ -59,6 +59,7 @@ function App() {
   const [analysis, setAnalysis] = useState<any>(null);
   const [monitoredStocks, setMonitoredStocks] = useState<MonitoredStock[]>([]);
   const [tradeHistory, setTradeHistory] = useState<TradeHistory[]>([]);
+  const [yearlySummary, setYearlySummary] = useState<any>(null);
   const [lastUpdate, setLastUpdate] = useState<string>("");
   const [status, setStatus] = useState<ProcessingStatus>('idle');
   const [statusMessage, setStatusMessage] = useState<string>("");
@@ -214,7 +215,8 @@ function App() {
       ]);
       setAnalysis(a.data);
       setMonitoredStocks(monitored.data);
-      setTradeHistory(history.data);
+      setTradeHistory(history.data.trades);
+      setYearlySummary(history.data.yearly_summary);
       
       console.log('Analysis data:', a.data); // 調試用
       
@@ -448,7 +450,7 @@ function App() {
         <Box sx={{ px: { xs: 2, sm: 3, md: 4 } }}>
             {currentTab === 0 && <AnalysisResultTab analysis={analysis} getRankColor={getRankColor} getRankIcon={getRankIcon} />}
             {currentTab === 1 && <MonitoredStocksTab stocks={monitoredStocks} onRefresh={fetchData} />}
-            {currentTab === 2 && <TradeHistoryTab trades={tradeHistory} onRefresh={fetchData} />}
+                        {currentTab === 2 && <TradeHistoryTab trades={tradeHistory} yearlySummary={yearlySummary} onRefresh={fetchData} />}
             {currentTab === 3 && <BacktestTab />}
         </Box>
 
@@ -790,8 +792,53 @@ const MonitoredStocksTab = ({ stocks, onRefresh }: { stocks: MonitoredStock[], o
     );
 };
 
+// 新元件：年度績效總結
+const YearlySummary = ({ summary }: { summary: any }) => {
+    if (!summary || Object.keys(summary).length === 0) {
+        return null;
+    }
+
+    const summaryData = Object.values(summary);
+
+    return (
+        <Box sx={{ mb: 4 }}>
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: '1fr 1fr 1fr' }, gap: 2 }}>
+                {summaryData.map((row: any) => (
+                    <Card key={row.year} elevation={2}>
+                        <CardContent>
+                            <Typography variant="h5" component="div" fontWeight="bold" color="primary.main">
+                                {`年度績效總結-${row.year}`}
+                            </Typography>
+                            <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 1 }}>
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                                    <Typography variant="body2" color="text.secondary">總交易次數:</Typography>
+                                    <Typography variant="body2" fontWeight="bold">{row.trade_count}</Typography>
+                                </Box>
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                                    <Typography variant="body2" color="text.secondary">獲利次數:</Typography>
+                                    <Typography variant="body2" fontWeight="bold">{row.winning_trades}</Typography>
+                                </Box>
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                                    <Typography variant="body2" color="text.secondary">勝率:</Typography>
+                                    <Typography variant="body2" fontWeight="bold">{row.win_rate.toFixed(2)}%</Typography>
+                                </Box>
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1, pt: 1, borderTop: 1, borderColor: 'divider' }}>
+                                    <Typography variant="body1" color="text.secondary">年度總盈虧:</Typography>
+                                    <Typography variant="body1" fontWeight="bold" sx={{ color: row.total_pnl_percent >= 0 ? 'success.main' : 'error.main' }}>
+                                        {row.total_pnl_percent.toFixed(2)}%
+                                    </Typography>
+                                </Box>
+                            </Box>
+                        </CardContent>
+                    </Card>
+                ))}
+            </Box>
+        </Box>
+    );
+};
+
 // 新元件：歷史交易紀錄
-const TradeHistoryTab = ({ trades, onRefresh }: { trades: TradeHistory[], onRefresh: () => void }) => {
+const TradeHistoryTab = ({ trades, yearlySummary, onRefresh }: { trades: TradeHistory[], yearlySummary: any, onRefresh: () => void }) => {
     const [openModal, setOpenModal] = useState(false);
     const [selectedTrade, setSelectedTrade] = useState<TradeHistory | null>(null);
     const [importing, setImporting] = useState(false);
@@ -904,6 +951,7 @@ const TradeHistoryTab = ({ trades, onRefresh }: { trades: TradeHistory[], onRefr
 
     return (
         <>
+            <YearlySummary summary={yearlySummary} />
             {/* 匯入/匯出按鈕 */}
             <Box sx={{ mb: 2, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
                 <input

@@ -10,8 +10,6 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from integrated_stock_analyzer import IntegratedStockAnalyzer
 
-# --- 常數定義 --- 
-
 # --- 常數定義 ---
 from backend.path_manager import path_manager
 
@@ -23,8 +21,6 @@ TRADE_HISTORY_FILE = path_manager.get_trade_history_path()
 print(f"Using unified monitored stocks file path: {PORTFOLIO_FILE}")
 print(f"Using unified analysis result file path: {ANALYSIS_RESULT_FILE}")
 print(f"Using unified trade history file path: {TRADE_HISTORY_FILE}")
-
-# --- 策略參數 (可調整) ---
 
 # --- 數據讀寫輔助函式 ---
 
