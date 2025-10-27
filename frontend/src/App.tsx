@@ -1,7 +1,8 @@
 import { useEffect, useState, useRef } from "react";
 import {
-  Container, Typography, Button, CircularProgress, Box, Chip, Alert, Card, CardContent, Accordion, AccordionDetails, IconButton, LinearProgress, Tabs, Tab, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip, Modal, Fade, List, ListItem, ListItemIcon, ListItemText, CssBaseline, useMediaQuery
+  Container, Typography, Button, CircularProgress, Box, Chip, Alert, Card, CardContent, Accordion, AccordionDetails, IconButton, LinearProgress, Tabs, Tab, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip, Modal, Fade, List, ListItem, ListItemIcon, ListItemText, CssBaseline, useMediaQuery, Grid, Select, MenuItem, FormControl, InputLabel
 } from "@mui/material";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Cell, ReferenceLine } from 'recharts';
 import { createTheme, ThemeProvider, useTheme } from "@mui/material/styles";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import Brightness4Icon from '@mui/icons-material/Brightness4';
@@ -60,6 +61,7 @@ function App() {
   const [monitoredStocks, setMonitoredStocks] = useState<MonitoredStock[]>([]);
   const [tradeHistory, setTradeHistory] = useState<TradeHistory[]>([]);
   const [yearlySummary, setYearlySummary] = useState<any>(null);
+  const [monthlySummary, setMonthlySummary] = useState<any>(null);
   const [lastUpdate, setLastUpdate] = useState<string>("");
   const [status, setStatus] = useState<ProcessingStatus>('idle');
   const [statusMessage, setStatusMessage] = useState<string>("");
@@ -217,6 +219,7 @@ function App() {
       setMonitoredStocks(monitored.data);
       setTradeHistory(history.data.trades);
       setYearlySummary(history.data.yearly_summary);
+      setMonthlySummary(history.data.monthly_summary);
       
       console.log('Analysis data:', a.data); // 調試用
       
@@ -450,7 +453,7 @@ function App() {
         <Box sx={{ px: { xs: 2, sm: 3, md: 4 } }}>
             {currentTab === 0 && <AnalysisResultTab analysis={analysis} getRankColor={getRankColor} getRankIcon={getRankIcon} />}
             {currentTab === 1 && <MonitoredStocksTab stocks={monitoredStocks} onRefresh={fetchData} />}
-                        {currentTab === 2 && <TradeHistoryTab trades={tradeHistory} yearlySummary={yearlySummary} onRefresh={fetchData} />}
+                        {currentTab === 2 && <TradeHistoryTab trades={tradeHistory} yearlySummary={yearlySummary} monthlySummary={monthlySummary} onRefresh={fetchData} />}
             {currentTab === 3 && <BacktestTab />}
         </Box>
 
@@ -794,51 +797,191 @@ const MonitoredStocksTab = ({ stocks, onRefresh }: { stocks: MonitoredStock[], o
 
 // 新元件：年度績效總結
 const YearlySummary = ({ summary }: { summary: any }) => {
+    const [selectedYear, setSelectedYear] = useState<string>('');
+    const [yearData, setYearData] = useState<any>(null);
+
+    useEffect(() => {
+        if (summary && Object.keys(summary).length > 0) {
+            const latestYear = Object.keys(summary)[0];
+            if (!selectedYear || !summary[selectedYear]) {
+                setSelectedYear(latestYear);
+            }
+        }
+    }, [summary, selectedYear]);
+
+    useEffect(() => {
+        if (summary && selectedYear && summary[selectedYear]) {
+            setYearData(summary[selectedYear]);
+        } else {
+            setYearData(null);
+        }
+    }, [summary, selectedYear]);
+
+    const handleYearChange = (event: any) => {
+        setSelectedYear(event.target.value as string);
+    };
+
     if (!summary || Object.keys(summary).length === 0) {
-        return null;
+        return (
+            <Card elevation={2} sx={{ height: '100%' }}>
+                <CardContent>
+                    <Typography variant="h6" fontWeight="bold">年度績效總結</Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+                        <Typography color="text.secondary">沒有可用的年度數據</Typography>
+                    </Box>
+                </CardContent>
+            </Card>
+        );
     }
 
-    const summaryData = Object.values(summary);
-
     return (
-        <Box sx={{ mb: 4 }}>
-            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: '1fr 1fr 1fr' }, gap: 2 }}>
-                {summaryData.map((row: any) => (
-                    <Card key={row.year} elevation={2}>
-                        <CardContent>
-                            <Typography variant="h5" component="div" fontWeight="bold" color="primary.main">
-                                {`年度績效總結-${row.year}`}
+        <Card elevation={2} sx={{ height: '100%' }}>
+            <CardContent>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+                    <Typography variant="h6" fontWeight="bold">
+                        年度績效
+                    </Typography>
+                    <FormControl size="small" sx={{ minWidth: 120 }}>
+                        <InputLabel>年份</InputLabel>
+                        <Select value={selectedYear} label="年份" onChange={handleYearChange}>
+                            {Object.keys(summary).map(year => (
+                                <MenuItem key={year} value={year}>{year}</MenuItem>
+                            ))}
+                        </Select>
+                    </FormControl>
+                </Box>
+                {yearData && (
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <Typography variant="body2" color="text.secondary">總交易次數:</Typography>
+                            <Typography variant="body2" fontWeight="bold">{yearData.trade_count}</Typography>
+                        </Box>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <Typography variant="body2" color="text.secondary">獲利次數:</Typography>
+                            <Typography variant="body2" fontWeight="bold">{yearData.winning_trades}</Typography>
+                        </Box>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <Typography variant="body2" color="text.secondary">勝率:</Typography>
+                            <Typography variant="body2" fontWeight="bold">{yearData.win_rate.toFixed(2)}%</Typography>
+                        </Box>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1, pt: 1, borderTop: 1, borderColor: 'divider' }}>
+                            <Typography variant="body1" color="text.secondary">年度總盈虧:</Typography>
+                            <Typography variant="body1" fontWeight="bold" sx={{ color: yearData.total_pnl_percent >= 0 ? 'success.main' : 'error.main' }}>
+                                {yearData.total_pnl_percent.toFixed(2)}%
                             </Typography>
-                            <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 1 }}>
-                                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                                    <Typography variant="body2" color="text.secondary">總交易次數:</Typography>
-                                    <Typography variant="body2" fontWeight="bold">{row.trade_count}</Typography>
-                                </Box>
-                                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                                    <Typography variant="body2" color="text.secondary">獲利次數:</Typography>
-                                    <Typography variant="body2" fontWeight="bold">{row.winning_trades}</Typography>
-                                </Box>
-                                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                                    <Typography variant="body2" color="text.secondary">勝率:</Typography>
-                                    <Typography variant="body2" fontWeight="bold">{row.win_rate.toFixed(2)}%</Typography>
-                                </Box>
-                                <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1, pt: 1, borderTop: 1, borderColor: 'divider' }}>
-                                    <Typography variant="body1" color="text.secondary">年度總盈虧:</Typography>
-                                    <Typography variant="body1" fontWeight="bold" sx={{ color: row.total_pnl_percent >= 0 ? 'success.main' : 'error.main' }}>
-                                        {row.total_pnl_percent.toFixed(2)}%
-                                    </Typography>
-                                </Box>
-                            </Box>
-                        </CardContent>
-                    </Card>
-                ))}
-            </Box>
-        </Box>
+                        </Box>
+                    </Box>
+                )}
+            </CardContent>
+        </Card>
     );
 };
 
 // 新元件：歷史交易紀錄
-const TradeHistoryTab = ({ trades, yearlySummary, onRefresh }: { trades: TradeHistory[], yearlySummary: any, onRefresh: () => void }) => {
+const CustomTooltip = ({ active, payload, label }: any) => {
+  const theme = useTheme();
+  if (active && payload && payload.length) {
+    const value = payload[0].value as number;
+    return (
+      <Paper elevation={3} sx={{ padding: '8px 12px', backgroundColor: theme.palette.background.paper }}>
+        <Typography variant="body2" sx={{ color: theme.palette.text.secondary }}>{`${label}`}</Typography>
+        <Typography variant="body1" sx={{ fontWeight: 'bold', color: value >= 0 ? green[500] : red[500] }}>
+          {`損益: ${value.toFixed(2)}%`}
+        </Typography>
+      </Paper>
+    );
+  }
+  return null;
+};
+
+const MonthlyPnlChart = ({ summary }: { summary: any }) => {
+    const theme = useTheme();
+    const [selectedYear, setSelectedYear] = useState<string>('');
+    const [chartData, setChartData] = useState<any[]>([]);
+
+    useEffect(() => {
+        if (summary && Object.keys(summary).length > 0) {
+            const latestYear = Object.keys(summary)[0];
+            if (!selectedYear || !summary[selectedYear]) {
+                setSelectedYear(latestYear);
+            }
+        }
+    }, [summary, selectedYear]);
+
+    useEffect(() => {
+        if (summary && selectedYear && summary[selectedYear]) {
+            const monthNames = ["1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月"];
+            const data = Array.from({ length: 12 }, (_, i) => {
+                const month = i + 1;
+                return {
+                    name: monthNames[i],
+                    pnl: summary[selectedYear][month] || 0,
+                };
+            });
+            setChartData(data);
+        } else {
+            setChartData([]);
+        }
+    }, [summary, selectedYear]);
+
+    if (!summary || Object.keys(summary).length === 0) {
+        return (
+            <Card elevation={2} sx={{ height: '100%' }}>
+                <CardContent>
+                    <Typography variant="h6" fontWeight="bold">月度損益 (%)</Typography>
+                    <Box sx={{ height: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <Typography color="text.secondary">沒有可用的月度數據</Typography>
+                    </Box>
+                </CardContent>
+            </Card>
+        );
+    }
+
+    const handleYearChange = (event: any) => {
+        setSelectedYear(event.target.value as string);
+    };
+
+    return (
+        <Card elevation={2} sx={{ height: '100%' }}>
+            <CardContent>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+                    <Typography variant="h6" fontWeight="bold">
+                        每月表現
+                    </Typography>
+                    <FormControl size="small" sx={{ minWidth: 120 }}>
+                        <InputLabel>年份</InputLabel>
+                        <Select value={selectedYear} label="年份" onChange={handleYearChange}>
+                            {Object.keys(summary).map(year => (
+                                <MenuItem key={year} value={year}>{year}</MenuItem>
+                            ))}
+                        </Select>
+                    </FormControl>
+                </Box>
+                <Box sx={{ height: 300 }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={chartData} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
+                            <XAxis dataKey="name" axisLine={false} tickLine={false} tick={false} />
+                            <YAxis axisLine={false} tickLine={false} tick={false} />
+                            <RechartsTooltip 
+                                cursor={{ fill: 'rgba(206, 212, 218, 0.3)' }}
+                                content={<CustomTooltip />}
+                            />
+                            <ReferenceLine y={0} stroke={theme.palette.divider} />
+                            <Bar dataKey="pnl" radius={[10, 10, 0, 0]}>
+                                {chartData.map((entry, index) => (
+                                    <Cell key={`cell-${index}`} fill={entry.pnl >= 0 ? green[500] : red[500]} />
+                                ))}
+                            </Bar>
+                        </BarChart>
+                    </ResponsiveContainer>
+                </Box>
+            </CardContent>
+        </Card>
+    );
+};
+
+// 新元件：歷史交易紀錄
+const TradeHistoryTab = ({ trades, yearlySummary, monthlySummary, onRefresh }: { trades: TradeHistory[], yearlySummary: any, monthlySummary: any, onRefresh: () => void }) => {
     const [openModal, setOpenModal] = useState(false);
     const [selectedTrade, setSelectedTrade] = useState<TradeHistory | null>(null);
     const [importing, setImporting] = useState(false);
@@ -951,7 +1094,15 @@ const TradeHistoryTab = ({ trades, yearlySummary, onRefresh }: { trades: TradeHi
 
     return (
         <>
-            <YearlySummary summary={yearlySummary} />
+            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', lg: 'row' }, gap: 3, mb: 3, alignItems: 'stretch' }}>
+                <Box sx={{ width: { xs: '100%', lg: '30%' } }}>
+                    <YearlySummary summary={yearlySummary} />
+                </Box>
+                <Box sx={{ width: { xs: '100%', lg: '70%' } }}>
+                    <MonthlyPnlChart summary={monthlySummary} />
+                </Box>
+            </Box>
+            
             {/* 匯入/匯出按鈕 */}
             <Box sx={{ mb: 2, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
                 <input
