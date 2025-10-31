@@ -28,6 +28,7 @@ warnings.filterwarnings('ignore')
 from pathlib import Path
 from enhanced_confirmation_system import EnhancedConfirmationSystem
 from multi_timeframe_analyzer import MultiTimeframeAnalyzer
+from pattern_recognizer import PatternRecognizer
 
 class IntegratedStockAnalyzer:
     def __init__(self, watchlist_file='stock_watchlist.json'):
@@ -37,6 +38,7 @@ class IntegratedStockAnalyzer:
         self.market_sentiment = None  # 市場情緒指標
         self.confirmation_system = EnhancedConfirmationSystem()  # 強化確認系統
         self.mtf_analyzer = MultiTimeframeAnalyzer()  # 多時間框架分析器
+        self.pattern_recognizer = PatternRecognizer(debug=True) # 圖形識別器 (開啟調適模式)
         
     def load_watchlist(self):
         try:
@@ -226,9 +228,6 @@ class IntegratedStockAnalyzer:
         
         # 短期動能轉折點
         df['Short_Term_Momentum_Turn'] = self.calculate_short_term_momentum_turn(df)
-        
-        # 價格結構反轉
-        df['Price_Structure_Reversal'] = self.calculate_price_structure_reversal(df)
         
         return df
     
@@ -1186,49 +1185,6 @@ class IntegratedStockAnalyzer:
         except:
             return pd.Series(0, index=df.index)
     
-    def calculate_price_structure_reversal(self, df):
-        """計算價格結構反轉"""
-        try:
-            structure_score = 0
-            
-            if len(df) >= 10:
-                # 檢查雙底或W底結構
-                lows = df['Low'].iloc[-10:]
-                if len(lows) >= 10:
-                    # 尋找兩個低點
-                    low_points = []
-                    for i in range(1, len(lows)-1):
-                        if lows.iloc[i] < lows.iloc[i-1] and lows.iloc[i] < lows.iloc[i+1]:
-                            low_points.append((i, lows.iloc[i]))
-                    
-                    if len(low_points) >= 2:
-                        # 檢查第二個低點是否高於第一個
-                        if low_points[-1][1] > low_points[-2][1]:
-                            structure_score += 40
-                
-                # 檢查突破頸線
-                if len(df) >= 5:
-                    recent_highs = df['High'].iloc[-5:]
-                    neckline = recent_highs.max()
-                    if df['Close'].iloc[-1] > neckline * 0.98:  # 接近突破
-                        structure_score += 30
-                
-                # 檢查價格在支撐位反彈
-                current_price = df['Close'].iloc[-1]
-                support_levels = [
-                    df['MA20'].iloc[-1],
-                    df['BB_Lower'].iloc[-1],
-                    df['SAR'].iloc[-1]
-                ]
-                
-                for support in support_levels:
-                    if 0.98 < current_price / support < 1.02:
-                        structure_score += 15
-                        break
-            
-            return pd.Series([structure_score] * len(df), index=df.index)
-        except:
-            return pd.Series(0, index=df.index)
     
     def detect_bullish_signals(self, df):
         if df is None or df.empty:
@@ -1236,9 +1192,11 @@ class IntegratedStockAnalyzer:
         signals = []
         last_signal_date = None  # 時間過濾：避免短期內重複訊號
         
-        for i in range(20, len(df)):
-            current = df.iloc[i]
-            prev = df.iloc[i-1]
+        # 從有足夠數據進行回溯的位置開始循環
+        for i in range(60, len(df)):
+            current_data_slice = df.iloc[:i+1]
+            current = current_data_slice.iloc[-1]
+            prev = current_data_slice.iloc[-2]
             
             # 價格過濾：避免明顯下跌趨勢中的假訊號
             if i >= 5:
@@ -1252,11 +1210,11 @@ class IntegratedStockAnalyzer:
                 if days_since_last < 3:  # 3天內不重複訊號
                     continue
             
-            # 修正：加入超買過濾
-            if current['RSI'] > 75:  # 嚴重超買狀態跳過
+            # 超買過濾
+            if current['RSI'] > 75:
                 continue
             
-            # 修正：加入布林通道位置過濾
+            # 布林通道位置過濾
             bb_upper = current['BB_Upper']
             bb_lower = current['BB_Lower']
             bb_position = (current['Close'] - bb_lower) / (bb_upper - bb_lower)
@@ -1264,144 +1222,61 @@ class IntegratedStockAnalyzer:
                 continue
             
             bullish_conditions = []
-            
-            # 黃金交叉+放量（改為1.5倍）
+
+            # ===== 整合新圖形識別模組 =====
+            patterns = self.pattern_recognizer.run_all_patterns(current_data_slice)
+            if patterns['summary']['score'] > 0:
+                bullish_conditions.extend(patterns['summary']['confirmed_patterns'])
+
+            # --- 其他指標作為輔助確認 ---
             if (current['MA5'] > current['MA20'] and prev['MA5'] <= prev['MA20'] and current['Volume_Ratio'] > 1.5):
                 bullish_conditions.append("黃金交叉+放量")
-            
-            # MACD柱狀圖轉正且RSI未超買
             if (current['MACD_Histogram'] > 0 and prev['MACD_Histogram'] <= 0 and current['RSI'] < 70):
-                bullish_conditions.append("MACD柱狀圖轉正+RSI未超買")
-            
-            # KD低檔交叉（加入K<20且D<25條件）
-            if (current['K'] > current['D'] and prev['K'] <= prev['D'] and current['K'] < 20 and current['D'] < 25):
-                bullish_conditions.append("KD低檔交叉")
-            
-            # SAR翻多（加入連續2根K線確認）
-            if (i >= 2 and 
-                current['Close'] > current['SAR'] and 
-                prev['Close'] > prev['SAR'] and 
-                df['Close'].iloc[i-2] <= df['SAR'].iloc[i-2]):
-                bullish_conditions.append("SAR翻多")
-            
-            # OBV突破均線
-            if (current['OBV'] > current['OBV_MA'] and prev['OBV'] <= prev['OBV_MA']):
-                bullish_conditions.append("OBV突破均線")
-            
-            # RSI超賣反轉
+                bullish_conditions.append("MACD柱狀圖轉正")
             if (current['RSI'] > 30 and prev['RSI'] <= 30):
                 bullish_conditions.append("RSI超賣反轉")
-            
-            # 價格突破布林下軌
-            if (current['Close'] > current['BB_Lower'] and prev['Close'] <= prev['BB_Lower']):
-                bullish_conditions.append("突破布林下軌")
-            
-            # 動量轉正
-            if (current['Price_Momentum'] > 0 and prev['Price_Momentum'] <= 0):
-                bullish_conditions.append("動量轉正")
-            
-            # ===== 新增：趨勢持續性指標 =====
-            
-            # ADX趨勢強度確認
-            if current['ADX'] > 25:  # ADX > 25表示趨勢明確
+            if current['ADX'] > 25:
                 bullish_conditions.append("ADX趨勢強勁")
-            
-            # 均線多頭排列強度
-            if current['MA_Bullish_Strength'] > 80:  # 多頭排列強度>80%
-                bullish_conditions.append("均線多頭排列")
-            
-            # 價格通道斜率向上
-            if current['Price_Channel_Slope'] > 0:
-                bullish_conditions.append("價格通道向上")
-            
-            # 成交量趨勢配合
-            if current['Volume_Trend_Alignment'] > 70:  # 成交量配合度>70%
-                bullish_conditions.append("成交量配合")
-            
-            # ===== 新增：動能分析指標 =====
-            
-            # 動量加速度為正
-            if current['Momentum_Acceleration'] > 0:
-                bullish_conditions.append("動量加速")
-            
-            # 技術指標斜率向上
-            if (current['RSI_Slope'] > 0 and current['MACD_Slope'] > 0):
-                bullish_conditions.append("指標斜率向上")
-            
-            # 相對強度為正
-            if current['Relative_Strength'] > 0:
-                bullish_conditions.append("相對強度為正")
-            
-            # 上漲動能延續性
-            if current['Uptrend_Continuity'] > 50:  # 延續性>50分
-                bullish_conditions.append("上漲動能延續")
-            
-            # ===== 新增：短期趨勢反轉識別 =====
-            
-            # 修正：趨勢反轉確認（統一判斷標準）
-            trend_reversal_confirmation = current['Trend_Reversal_Confirmation']
-            reversal_strength = current['Reversal_Strength']
-            reversal_reliability = current['Reversal_Reliability']
-            short_term_momentum_turn = current['Short_Term_Momentum_Turn']
-            price_structure_reversal = current['Price_Structure_Reversal']
-            
-            # 趨勢反轉確認（要求更嚴格）
-            if trend_reversal_confirmation > 60:  # 提高門檻
-                bullish_conditions.append("趨勢反轉確認")
-            
-            # 反轉強度
-            if reversal_strength > 70:  # 提高門檻
-                bullish_conditions.append("反轉強度強勁")
-            
-            # 反轉可信度
-            if reversal_reliability > 70:  # 提高門檻
-                bullish_conditions.append("反轉可信度高")
-            
-            # 短期動能轉折
-            if short_term_momentum_turn > 60:  # 提高門檻
-                bullish_conditions.append("短期動能轉折")
-            
-            # 價格結構反轉
-            if price_structure_reversal > 50:  # 提高門檻
-                bullish_conditions.append("價格結構反轉")
-            
-            # 修正：更嚴格的多頭訊號條件
-            if len(bullish_conditions) >= 5:  # 提高條件數量要求
-                # 必須包含至少2個趨勢反轉相關條件
-                reversal_conditions = [
-                    "趨勢反轉確認", "反轉強度強勁", "反轉可信度高", 
-                    "短期動能轉折", "價格結構反轉"
-                ]
-                reversal_count = sum(1 for cond in bullish_conditions if cond in reversal_conditions)
-                
-                if reversal_count >= 2:  # 要求至少2個反轉條件
-                    # 計算距離當前的天數
-                    days_ago = len(df) - 1 - i
 
-                    signals.append({
-                        'date': df.index[i],
-                        'price': current['Close'],
-                        'conditions': bullish_conditions,
-                        'signal_types': bullish_conditions,  # 添加signal_types別名
-                        'days_ago': days_ago,  # 添加days_ago字段
-                        'rsi': current['RSI'],
-                        'macd': current['MACD'],
-                        'volume_ratio': current['Volume_Ratio'],
-                        'k': current['K'],
-                        'd': current['D'],
-                        'sar': current['SAR'],
-                        'obv': current['OBV'],
-                        'adx': current['ADX'],
-                        'ma_bullish_strength': current['MA_Bullish_Strength'],
-                        'momentum_acceleration': current['Momentum_Acceleration'],
-                        'uptrend_continuity': current['Uptrend_Continuity'],
-                        'trend_reversal_confirmation': current['Trend_Reversal_Confirmation'],
-                        'reversal_strength': current['Reversal_Strength'],
-                        'reversal_reliability': current['Reversal_Reliability'],
-                        'short_term_momentum_turn': current['Short_Term_Momentum_Turn'],
-                        'price_structure_reversal': current['Price_Structure_Reversal']
-                    })
-                    last_signal_date = df.index[i]  # 更新最後訊號日期
+            # --- 新的、更穩健的信號觸發規則 ---
+            # 規則：一個強力的圖形信號，加上至少2個其他技術指標的確認
+            is_pattern_confirmed = patterns['summary']['score'] >= 40 # W底或OBV背離等主要圖形被確認
+            
+            # 計算輔助確認指標的數量
+            indicator_confirmations = 0
+            if ("黃金交叉+放量" in bullish_conditions): indicator_confirmations += 1
+            if ("MACD柱狀圖轉正" in bullish_conditions): indicator_confirmations += 1
+            if ("RSI超賣反轉" in bullish_conditions): indicator_confirmations += 1
+            if ("ADX趨勢強勁" in bullish_conditions): indicator_confirmations += 1
+
+            # ===== 強制調試輸出 =====
+            symbol_name = getattr(self, 'current_symbol', 'N/A')
+            print(f"\n--- [DEBUG] {df.index[i].date()} for {symbol_name} ---")
+            print(f"  Pattern Score: {patterns['summary']['score']} (Threshold: >=40 is_pattern_confirmed: {is_pattern_confirmed})")
+            if patterns['summary']['confirmed_patterns']:
+                print(f"  Found Patterns: {patterns['summary']['confirmed_patterns']}")
+            print(f"  Indicator Confirmations: {indicator_confirmations} (Threshold: >=2)")
+            
+            if not (is_pattern_confirmed and indicator_confirmations >= 2):
+                print(f"  RESULT: Signal Filtered.")
+            else:
+                print(f"  RESULT: Signal Generated!")
+            # ===== 調試結束 =====
+
+            if is_pattern_confirmed and indicator_confirmations >= 2:
+                days_ago = len(df) - 1 - i
+                signals.append({
+                    'date': df.index[i],
+                    'price': current['Close'],
+                    'conditions': bullish_conditions,
+                    'signal_types': bullish_conditions,
+                    'days_ago': days_ago,
+                    'rsi': current['RSI'],
+                    'macd': current['MACD'],
+                    'volume_ratio': current['Volume_Ratio'],
+                    'pattern_summary': patterns['summary'] # 將圖形分析結果也加入日誌
+                })
+                last_signal_date = df.index[i]
         
         return signals
     
@@ -1538,6 +1413,13 @@ class IntegratedStockAnalyzer:
         elif df['Volume_Ratio'].iloc[-1] < 0.8:
             score -= 1
             confidence_factors.append("成交量萎縮")
+
+        # 新增：賣壓衰竭評估
+        price_change_1d = df['Close'].pct_change(1).iloc[-1]
+        volume_change_1d = df['Volume'].pct_change(1).iloc[-1]
+        if price_change_1d < 0 and volume_change_1d < -0.2:
+            score += 0.5
+            confidence_factors.append("價跌量縮，賣壓減輕")
         
         # 價格趨勢評估
         current_price = df['Close'].iloc[-1]
@@ -1758,18 +1640,6 @@ class IntegratedStockAnalyzer:
         elif short_term_momentum_turn < 30:
             score -= 1
             confidence_factors.append("短期動能未轉折")
-        
-        # 價格結構反轉評估
-        price_structure_reversal = df['Price_Structure_Reversal'].iloc[-1]
-        if price_structure_reversal > 70:
-            score += 2
-            confidence_factors.append("價格結構完美反轉")
-        elif price_structure_reversal > 50:
-            score += 1
-            confidence_factors.append("價格結構反轉")
-        elif price_structure_reversal < 20:
-            score -= 1
-            confidence_factors.append("價格結構未反轉")
         
         # 修正：計算信心度分數（調整計算方式）
         # 基礎分數調整，考慮超買風險
