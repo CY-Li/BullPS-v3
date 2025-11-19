@@ -837,6 +837,43 @@ backtest_status = {
     "result": None
 }
 
+@app.get("/api/fear-greed-index")
+async def get_fear_greed_index_data():
+    """
+    獲取CNN恐懼貪婪指數的歷史數據
+    """
+    try:
+        from backend.fear_greed_index import FearGreedIndex
+        fgi = FearGreedIndex()
+        # The fetch_data is called inside get_historical_data if data is not present
+        df = fgi.get_historical_data()
+
+        if df.empty:
+            return JSONResponse(
+                status_code=404,
+                content={"error": "無法獲取恐懼貪婪指數數據，請稍後再試。"}
+            )
+        
+        # Convert dataframe to a list of dicts for JSON response
+        # The 'date' column is a datetime object, so convert it to ISO 8601 string format
+        df['date'] = df['date'].dt.strftime('%Y-%m-%dT%H:%M:%S')
+        historical_data = df.to_dict(orient='records')
+        
+        current_index = fgi.get_current_index()
+
+        return {
+            "current": current_index,
+            "historical": historical_data
+        }
+        
+    except Exception as e:
+        logger.error(f"獲取恐懼貪婪指數時發生錯誤: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": "伺服器在獲取恐懼貪婪指數時發生內部錯誤。"}
+        )
+
+
 def update_backtest_status(message: str, progress: int, step: str = "", log_message: str = ""):
     """更新回測狀態"""
     global backtest_status

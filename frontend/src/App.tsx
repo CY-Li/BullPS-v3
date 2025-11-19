@@ -1,4 +1,5 @@
-import { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef } from "react";
+import FearGreedChart from "./FearGreedChart";
 import {
   Container, Typography, Button, CircularProgress, Box, Chip, Alert, Card, CardContent, Accordion, AccordionDetails, IconButton, LinearProgress, Tabs, Tab, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip, Modal, Fade, List, ListItem, ListItemIcon, ListItemText, CssBaseline, useMediaQuery, Select, MenuItem, FormControl, InputLabel
 } from "@mui/material";
@@ -443,6 +444,7 @@ function App() {
         <Box sx={{ borderBottom: 1, borderColor: 'divider', my: 3 }}>
             <Tabs value={currentTab} onChange={handleTabChange} aria-label="analysis tabs" variant="scrollable" scrollButtons="auto">
                 <Tab label="分析結果摘要" />
+                <Tab label="市場情緒" />
                 <Tab label={`股票監控清單 (${monitoredStocks.length})`} />
                 <Tab label={`歷史交易紀錄 (${tradeHistory.length})`} />
                 <Tab label="回測勝率" />
@@ -452,9 +454,10 @@ function App() {
         {/* 頁籤內容 */}
         <Box sx={{ px: { xs: 2, sm: 3, md: 4 } }}>
             {currentTab === 0 && <AnalysisResultTab analysis={analysis} getRankColor={getRankColor} getRankIcon={getRankIcon} />}
-            {currentTab === 1 && <MonitoredStocksTab stocks={monitoredStocks} onRefresh={fetchData} />}
-                        {currentTab === 2 && <TradeHistoryTab trades={tradeHistory} yearlySummary={yearlySummary} monthlySummary={monthlySummary} onRefresh={fetchData} />}
-            {currentTab === 3 && <BacktestTab />}
+            {currentTab === 1 && <FearGreedChart />}
+            {currentTab === 2 && <MonitoredStocksTab stocks={monitoredStocks} onRefresh={fetchData} />}
+            {currentTab === 3 && <TradeHistoryTab trades={tradeHistory} yearlySummary={yearlySummary} monthlySummary={monthlySummary} onRefresh={fetchData} />}
+            {currentTab === 4 && <BacktestTab />}
         </Box>
 
       </Container>

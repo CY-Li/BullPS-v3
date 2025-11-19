@@ -3,4 +3,5 @@ uvicorn
 requests
 yfinance
 apscheduler
-pytz 
+pytz
+pandas
