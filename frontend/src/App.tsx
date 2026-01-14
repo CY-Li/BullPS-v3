@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from "react";
 import FearGreedChart from "./FearGreedChart";
 import {
-  Container, Typography, Button, CircularProgress, Box, Chip, Alert, Card, CardContent, Accordion, AccordionDetails, IconButton, LinearProgress, Tabs, Tab, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip, Modal, Fade, List, ListItem, ListItemIcon, ListItemText, CssBaseline, useMediaQuery, Select, MenuItem, FormControl, InputLabel
+    Container, Typography, Button, CircularProgress, Box, Chip, Alert, Card, CardContent, Accordion, AccordionDetails, IconButton, LinearProgress, Tabs, Tab, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip, Modal, Fade, List, ListItem, ListItemIcon, ListItemText, CssBaseline, useMediaQuery, Select, MenuItem, FormControl, InputLabel
 } from "@mui/material";
 import { BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, Cell, ReferenceLine } from 'recharts';
 import { createTheme, ThemeProvider, useTheme } from "@mui/material/styles";
@@ -17,19 +17,19 @@ import { blue, green, orange, red } from "@mui/material/colors";
 
 // 新增：主題模式 state，預設跟隨系統
 const getSystemTheme = () =>
-  window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 
 type ProcessingStatus = 'idle' | 'updating' | 'analyzing' | 'completed' | 'error';
 
 // 分析狀態介面
 interface AnalysisStatus {
-  is_running: boolean;
-  current_stage: string;
-  progress: number;
-  message: string;
-  start_time: string | null;
-  end_time: string | null;
-  error: string | null;
+    is_running: boolean;
+    current_stage: string;
+    progress: number;
+    message: string;
+    start_time: string | null;
+    end_time: string | null;
+    error: string | null;
 }
 
 
@@ -56,413 +56,413 @@ interface TradeHistory extends MonitoredStock {
 
 
 function App() {
-  const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState(false);
 
-  const [analysis, setAnalysis] = useState<any>(null);
-  const [monitoredStocks, setMonitoredStocks] = useState<MonitoredStock[]>([]);
-  const [tradeHistory, setTradeHistory] = useState<TradeHistory[]>([]);
-  const [yearlySummary, setYearlySummary] = useState<any>(null);
-  const [monthlySummary, setMonthlySummary] = useState<any>(null);
-  const [lastUpdate, setLastUpdate] = useState<string>("");
-  const [status, setStatus] = useState<ProcessingStatus>('idle');
-  const [statusMessage, setStatusMessage] = useState<string>("");
+    const [analysis, setAnalysis] = useState<any>(null);
+    const [monitoredStocks, setMonitoredStocks] = useState<MonitoredStock[]>([]);
+    const [tradeHistory, setTradeHistory] = useState<TradeHistory[]>([]);
+    const [yearlySummary, setYearlySummary] = useState<any>(null);
+    const [monthlySummary, setMonthlySummary] = useState<any>(null);
+    const [lastUpdate, setLastUpdate] = useState<string>("");
+    const [status, setStatus] = useState<ProcessingStatus>('idle');
+    const [statusMessage, setStatusMessage] = useState<string>("");
 
-  const [themeMode, setThemeMode] = useState<'light' | 'dark'>(getSystemTheme());
-  const [analysisStatus, setAnalysisStatus] = useState<AnalysisStatus | null>(null);
-  const [showDetailedProgress, setShowDetailedProgress] = useState(false);
-  const [currentTab, setCurrentTab] = useState(0);
-  
-  // 輪詢狀態的 ref
-  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+    const [themeMode, setThemeMode] = useState<'light' | 'dark'>(getSystemTheme());
+    const [analysisStatus, setAnalysisStatus] = useState<AnalysisStatus | null>(null);
+    const [showDetailedProgress, setShowDetailedProgress] = useState(false);
+    const [currentTab, setCurrentTab] = useState(0);
 
-  // 監聽系統主題變化
-  useEffect(() => {
-    const mq = window.matchMedia('(prefers-color-scheme: dark)');
-    const handler = (e: MediaQueryListEvent) => setThemeMode(e.matches ? 'dark' : 'light');
-    mq.addEventListener('change', handler);
-    return () => mq.removeEventListener('change', handler);
-  }, []);
+    // 輪詢狀態的 ref
+    const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // 清理輪詢
-  useEffect(() => {
-    return () => {
-      if (pollingIntervalRef.current) {
-        clearInterval(pollingIntervalRef.current);
-      }
-    };
-  }, []);
+    // 監聽系統主題變化
+    useEffect(() => {
+        const mq = window.matchMedia('(prefers-color-scheme: dark)');
+        const handler = (e: MediaQueryListEvent) => setThemeMode(e.matches ? 'dark' : 'light');
+        mq.addEventListener('change', handler);
+        return () => mq.removeEventListener('change', handler);
+    }, []);
 
-  const theme = createTheme({
-    palette: {
-      mode: themeMode,
-      ...(themeMode === 'light'
-        ? {
-            // 淺色模式的調色盤
-            primary: { main: '#1976d2' }, // 經典藍色
-            secondary: { main: '#dc004e' }, // 亮麗的粉紅色
-            background: {
-              default: '#f4f6f8', // 非常淺的灰色背景
-              paper: '#ffffff',   // 卡片、選單等為純白色
-            },
-            text: {
-              primary: '#333333',
-              secondary: '#555555',
-            },
-          }
-        : {
-            // 深色模式的調色盤
-            primary: { main: '#90caf9' }, // 淺藍色，在深色背景上更突出
-            secondary: { main: '#f48fb1' }, // 柔和的粉紅色
-            background: {
-              default: '#121212', // 標準的深色背景
-              paper: '#1e1e1e',   // 卡片、選單等為深灰色
-            },
-            text: {
-              primary: '#e0e0e0',
-              secondary: '#bdbdbd',
-            },
-          }),
-    },
-    shape: { borderRadius: 12 },
-    typography: {
-      fontFamily: '"Inter", "Roboto", "Helvetica", "Arial", sans-serif',
-      h4: {
-        fontWeight: 700,
-      },
-      h5: {
-        fontWeight: 600,
-      },
-      h6: {
-        fontWeight: 600,
-      },
-    },
-    components: {
-      MuiCard: {
-        styleOverrides: {
-          root: {
-            transition: 'transform 0.3s ease-in-out, box-shadow 0.3s ease-in-out',
-            '&:hover': {
-              transform: 'translateY(-4px)',
-            },
-          },
+    // 清理輪詢
+    useEffect(() => {
+        return () => {
+            if (pollingIntervalRef.current) {
+                clearInterval(pollingIntervalRef.current);
+            }
+        };
+    }, []);
+
+    const theme = createTheme({
+        palette: {
+            mode: themeMode,
+            ...(themeMode === 'light'
+                ? {
+                    // 淺色模式的調色盤
+                    primary: { main: '#1976d2' }, // 經典藍色
+                    secondary: { main: '#dc004e' }, // 亮麗的粉紅色
+                    background: {
+                        default: '#f4f6f8', // 非常淺的灰色背景
+                        paper: '#ffffff',   // 卡片、選單等為純白色
+                    },
+                    text: {
+                        primary: '#333333',
+                        secondary: '#555555',
+                    },
+                }
+                : {
+                    // 深色模式的調色盤
+                    primary: { main: '#90caf9' }, // 淺藍色，在深色背景上更突出
+                    secondary: { main: '#f48fb1' }, // 柔和的粉紅色
+                    background: {
+                        default: '#121212', // 標準的深色背景
+                        paper: '#1e1e1e',   // 卡片、選單等為深灰色
+                    },
+                    text: {
+                        primary: '#e0e0e0',
+                        secondary: '#bdbdbd',
+                    },
+                }),
         },
-      },
-    },
-  });
+        shape: { borderRadius: 12 },
+        typography: {
+            fontFamily: '"Inter", "Roboto", "Helvetica", "Arial", sans-serif',
+            h4: {
+                fontWeight: 700,
+            },
+            h5: {
+                fontWeight: 600,
+            },
+            h6: {
+                fontWeight: 600,
+            },
+        },
+        components: {
+            MuiCard: {
+                styleOverrides: {
+                    root: {
+                        transition: 'transform 0.3s ease-in-out, box-shadow 0.3s ease-in-out',
+                        '&:hover': {
+                            transform: 'translateY(-4px)',
+                        },
+                    },
+                },
+            },
+        },
+    });
 
-  // 獲取分析狀態
-  const fetchAnalysisStatus = async () => {
-    try {
-      const response = await axios.get('/api/analysis-status');
-      const status = response.data;
-      setAnalysisStatus(status);
-      
-      // 如果分析完成，停止輪詢
-      if (!status.is_running && status.current_stage === "完成") {
-        if (pollingIntervalRef.current) {
-          clearInterval(pollingIntervalRef.current);
-          pollingIntervalRef.current = null;
+    // 獲取分析狀態
+    const fetchAnalysisStatus = async () => {
+        try {
+            const response = await axios.get('/api/analysis-status');
+            const status = response.data;
+            setAnalysisStatus(status);
+
+            // 如果分析完成，停止輪詢
+            if (!status.is_running && status.current_stage === "完成") {
+                if (pollingIntervalRef.current) {
+                    clearInterval(pollingIntervalRef.current);
+                    pollingIntervalRef.current = null;
+                }
+                setStatus('completed');
+                setStatusMessage("分析完成");
+                setShowDetailedProgress(false);
+
+                // 3秒後清除完成狀態
+                setTimeout(() => {
+                    setStatus('idle');
+                    setStatusMessage("");
+                }, 3000);
+
+                // 重新獲取數據
+                await fetchData();
+            } else if (status.error) {
+                if (pollingIntervalRef.current) {
+                    clearInterval(pollingIntervalRef.current);
+                    pollingIntervalRef.current = null;
+                }
+                setStatus('error');
+                setStatusMessage(`分析失敗: ${status.error}`);
+                setShowDetailedProgress(false);
+            }
+
+        } catch (error) {
+            console.error('Error fetching analysis status:', error);
         }
-        setStatus('completed');
-        setStatusMessage("分析完成");
-        setShowDetailedProgress(false);
-        
-        // 3秒後清除完成狀態
-        setTimeout(() => {
-          setStatus('idle');
-          setStatusMessage("");
-        }, 3000);
-        
-        // 重新獲取數據
-        await fetchData();
-      } else if (status.error) {
+    };
+
+    // 開始輪詢分析狀態
+    const startStatusPolling = () => {
+        // 清除現有的輪詢
         if (pollingIntervalRef.current) {
-          clearInterval(pollingIntervalRef.current);
-          pollingIntervalRef.current = null;
+            clearInterval(pollingIntervalRef.current);
         }
-        setStatus('error');
-        setStatusMessage(`分析失敗: ${status.error}`);
-        setShowDetailedProgress(false);
-      }
-      
-    } catch (error) {
-      console.error('Error fetching analysis status:', error);
-    }
-  };
 
-  // 開始輪詢分析狀態
-  const startStatusPolling = () => {
-    // 清除現有的輪詢
-    if (pollingIntervalRef.current) {
-      clearInterval(pollingIntervalRef.current);
-    }
-    
-    // 開始新的輪詢，每2秒檢查一次
-    pollingIntervalRef.current = setInterval(fetchAnalysisStatus, 2000);
-  };
+        // 開始新的輪詢，每2秒檢查一次
+        pollingIntervalRef.current = setInterval(fetchAnalysisStatus, 2000);
+    };
 
 
 
 
 
-  const fetchData = async () => {
-    setLoading(true);
-    setStatus('updating');
-    setStatusMessage("正在獲取最新數據...");
-    
-    try {
-      const [a, monitored, history] = await Promise.all([
-        axios.get("/api/analysis"),
-        axios.get("/api/monitored-stocks"),
-        axios.get("/api/trade-history"),
-      ]);
-      setAnalysis(a.data);
-      setMonitoredStocks(monitored.data);
-      setTradeHistory(history.data.trades);
-      setYearlySummary(history.data.yearly_summary);
-      setMonthlySummary(history.data.monthly_summary);
-      
-      console.log('Analysis data:', a.data); // 調試用
-      
-      // 從分析結果中獲取實際的分析時間
-      if (a.data?.timestamp) {
-        setLastUpdate(new Date(a.data.timestamp).toLocaleString("zh-TW"));
-      } else if (a.data?.analysis_date) {
-        setLastUpdate(a.data.analysis_date);
-      } else if (a.data?.result) {
-        // 如果沒有 timestamp，使用當前時間作為備用
-        setLastUpdate(new Date().toLocaleString("zh-TW"));
-      }
-      
-      // 注意：股票價格信息已包含在分析結果中，不需要額外獲取
-      
-      setStatus('completed');
-      setStatusMessage("數據更新完成");
-      
-      // 3秒後清除完成狀態
-      setTimeout(() => {
-        setStatus('idle');
-        setStatusMessage("");
-      }, 3000);
-      
-    } catch (error) {
-      setStatus('error');
-      setStatusMessage("獲取數據失敗");
-      console.error('Error fetching data:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+    const fetchData = async () => {
+        setLoading(true);
+        setStatus('updating');
+        setStatusMessage("正在獲取最新數據...");
 
-  useEffect(() => { fetchData(); }, []);
+        try {
+            const [a, monitored, history] = await Promise.all([
+                axios.get("/api/analysis"),
+                axios.get("/api/monitored-stocks"),
+                axios.get("/api/trade-history"),
+            ]);
+            setAnalysis(a.data);
+            setMonitoredStocks(monitored.data);
+            setTradeHistory(history.data.trades);
+            setYearlySummary(history.data.yearly_summary);
+            setMonthlySummary(history.data.monthly_summary);
 
-  const handleManualRun = async () => {
-    setLoading(true);
-    setStatus('updating');
-    setStatusMessage("正在觸發分析...");
-    setShowDetailedProgress(true);
-    
-    try {
-      const response = await axios.post("/api/run-now");
-      
-      if (response.data.status === "already_running") {
-        setStatus('error');
-        setStatusMessage("分析正在進行中，請稍候");
-        setShowDetailedProgress(false);
-        setLoading(false);
-        return;
-      }
-      
-      setStatus('analyzing');
-      setStatusMessage("正在分析股票數據...");
-      
-      // 開始輪詢狀態
-      startStatusPolling();
-      
-    } catch (error) {
-      setStatus('error');
-      setStatusMessage("觸發分析失敗");
-      setShowDetailedProgress(false);
-      setLoading(false);
-      console.error('Error triggering analysis:', error);
-    }
-  };
+            console.log('Analysis data:', a.data); // 調試用
 
+            // 從分析結果中獲取實際的分析時間
+            if (a.data?.timestamp) {
+                setLastUpdate(new Date(a.data.timestamp).toLocaleString("zh-TW"));
+            } else if (a.data?.analysis_date) {
+                setLastUpdate(a.data.analysis_date);
+            } else if (a.data?.result) {
+                // 如果沒有 timestamp，使用當前時間作為備用
+                setLastUpdate(new Date().toLocaleString("zh-TW"));
+            }
 
+            // 注意：股票價格信息已包含在分析結果中，不需要額外獲取
 
-  const getStatusColor = (status: ProcessingStatus) => {
-    switch (status) {
-      case 'updating': return orange[600];
-      case 'analyzing': return blue[600];
-      case 'completed': return green[600];
-      case 'error': return red[600];
-      default: return 'default';
-    }
-  };
+            setStatus('completed');
+            setStatusMessage("數據更新完成");
 
-  const getStatusIcon = (status: ProcessingStatus) => {
-    switch (status) {
-      case 'updating': return '🔄';
-      case 'analyzing': return '📊';
-      case 'completed': return '✅';
-      case 'error': return '❌';
-      default: return '';
-    }
-  };
+            // 3秒後清除完成狀態
+            setTimeout(() => {
+                setStatus('idle');
+                setStatusMessage("");
+            }, 3000);
 
-  const getRankColor = (rank: number) => {
-    if (rank <= 3) return '#FFD700'; // 金色
-    if (rank <= 10) return '#C0C0C0'; // 銀色
-    if (rank <= 20) return '#CD7F32'; // 銅色
-    return '#E0E0E0'; // 灰色
-  };
+        } catch (error) {
+            setStatus('error');
+            setStatusMessage("獲取數據失敗");
+            console.error('Error fetching data:', error);
+        } finally {
+            setLoading(false);
+        }
+    };
 
-  const getRankIcon = (rank: number) => {
-    if (rank === 1) return '🥇';
-    if (rank === 2) return '🥈';
-    if (rank === 3) return '🥉';
-    return `#${rank}`;
-  };
+    useEffect(() => { fetchData(); }, []);
+
+    const handleManualRun = async () => {
+        setLoading(true);
+        setStatus('updating');
+        setStatusMessage("正在觸發分析...");
+        setShowDetailedProgress(true);
+
+        try {
+            const response = await axios.post("/api/run-now");
+
+            if (response.data.status === "already_running") {
+                setStatus('error');
+                setStatusMessage("分析正在進行中，請稍候");
+                setShowDetailedProgress(false);
+                setLoading(false);
+                return;
+            }
+
+            setStatus('analyzing');
+            setStatusMessage("正在分析股票數據...");
+
+            // 開始輪詢狀態
+            startStatusPolling();
+
+        } catch (error) {
+            setStatus('error');
+            setStatusMessage("觸發分析失敗");
+            setShowDetailedProgress(false);
+            setLoading(false);
+            console.error('Error triggering analysis:', error);
+        }
+    };
 
 
 
-  const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
-    setCurrentTab(newValue);
-  };
+    const getStatusColor = (status: ProcessingStatus) => {
+        switch (status) {
+            case 'updating': return orange[600];
+            case 'analyzing': return blue[600];
+            case 'completed': return green[600];
+            case 'error': return red[600];
+            default: return 'default';
+        }
+    };
 
-  return (
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
-      {/* 黑暗模式切換按鈕，建議放在右上角 */}
-      <Box sx={{ position: 'absolute', top: 16, right: 24, zIndex: 10 }}>
-        <IconButton onClick={() => setThemeMode(themeMode === 'light' ? 'dark' : 'light')} color="inherit">
-          {themeMode === 'dark' ? <Brightness7Icon /> : <Brightness4Icon />}
-        </IconButton>
-      </Box>
-      <Container maxWidth={false} sx={{ pt: { xs: 8, sm: 4 }, pb: 4, px: { xs: 2, sm: 4 }, width: '100%' }}>
-        <Typography variant="h4" gutterBottom fontWeight={700} sx={{ fontSize: { xs: '1.8rem', sm: '3.2rem' } }}>
-          Bull Put Spread 選股神器
-        </Typography>
-        <Typography variant="subtitle1" gutterBottom>
-          自動分析被低估且趨勢反轉向上的股票，提供精準的抄底時機
-        </Typography>
-        
-        {/* 狀態顯示區域 */}
-        <Box sx={{ my: 2, px: { xs: 2, sm: 3, md: 4 }, display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
-          <Button
-            variant="contained"
-            startIcon={<RefreshIcon />}
-            onClick={handleManualRun}
-            disabled={loading || (analysisStatus?.is_running ?? false)}
-          >
-            {status === 'updating' ? '觸發分析中...' :
-             status === 'analyzing' ? '分析進行中...' :
-             analysisStatus?.is_running ? '分析進行中...' :
-             '立即更新'}
-          </Button>
+    const getStatusIcon = (status: ProcessingStatus) => {
+        switch (status) {
+            case 'updating': return '🔄';
+            case 'analyzing': return '📊';
+            case 'completed': return '✅';
+            case 'error': return '❌';
+            default: return '';
+        }
+    };
+
+    const getRankColor = (rank: number) => {
+        if (rank <= 3) return '#FFD700'; // 金色
+        if (rank <= 10) return '#C0C0C0'; // 銀色
+        if (rank <= 20) return '#CD7F32'; // 銅色
+        return '#E0E0E0'; // 灰色
+    };
+
+    const getRankIcon = (rank: number) => {
+        if (rank === 1) return '🥇';
+        if (rank === 2) return '🥈';
+        if (rank === 3) return '🥉';
+        return `#${rank}`;
+    };
 
 
-          
-          {status !== 'idle' && (
-            <Chip
-              label={`${getStatusIcon(status)} ${statusMessage}`}
-              color={getStatusColor(status) as any}
-              variant="outlined"
-              size="small"
-            />
-          )}
-          
-          {lastUpdate && (
-            <Typography variant="body2" color="text.secondary" sx={{ fontSize: '14px' }}>
-              最後分析時間：{lastUpdate}
-            </Typography>
-          )}
-        </Box>
-        
-        {/* 詳細進度顯示 */}
-        {showDetailedProgress && analysisStatus && (
-          <Box sx={{ my: 2, px: { xs: 2, sm: 3, md: 4 } }}>
-            <Card elevation={2}>
-              <CardContent>
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-                  <Typography variant="h6" fontWeight="bold">
-                    分析進度
-                  </Typography>
-                  <Chip 
-                    label={`${analysisStatus.progress}%`}
-                    color={analysisStatus.error ? "error" : "primary"}
-                    size="small"
-                  />
-                </Box>
-                
-                <LinearProgress 
-                  variant="determinate" 
-                  value={analysisStatus.progress} 
-                  sx={{ mb: 2, height: 8, borderRadius: 4 }}
-                />
-                
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                  <Typography variant="body2" fontWeight="bold" color="primary">
-                    當前階段：
-                  </Typography>
-                  <Typography variant="body2">
-                    {analysisStatus.current_stage}
-                  </Typography>
-                </Box>
-                
-                <Typography variant="body2" color="text.secondary">
-                  {analysisStatus.message}
+
+    const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
+        setCurrentTab(newValue);
+    };
+
+    return (
+        <ThemeProvider theme={theme}>
+            <CssBaseline />
+            {/* 黑暗模式切換按鈕，建議放在右上角 */}
+            <Box sx={{ position: 'absolute', top: 16, right: 24, zIndex: 10 }}>
+                <IconButton onClick={() => setThemeMode(themeMode === 'light' ? 'dark' : 'light')} color="inherit">
+                    {themeMode === 'dark' ? <Brightness7Icon /> : <Brightness4Icon />}
+                </IconButton>
+            </Box>
+            <Container maxWidth={false} sx={{ pt: { xs: 8, sm: 4 }, pb: 4, px: { xs: 2, sm: 4 }, width: '100%' }}>
+                <Typography variant="h4" gutterBottom fontWeight={700} sx={{ fontSize: { xs: '1.8rem', sm: '3.2rem' } }}>
+                    Bull Put Spread 選股神器
                 </Typography>
-                
-                {analysisStatus.error && (
-                  <Alert severity="error" sx={{ mt: 2 }}>
-                    {analysisStatus.error}
-                  </Alert>
+                <Typography variant="subtitle1" gutterBottom>
+                    自動分析被低估且趨勢反轉向上的股票，提供精準的抄底時機
+                </Typography>
+
+                {/* 狀態顯示區域 */}
+                <Box sx={{ my: 2, px: { xs: 2, sm: 3, md: 4 }, display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
+                    <Button
+                        variant="contained"
+                        startIcon={<RefreshIcon />}
+                        onClick={handleManualRun}
+                        disabled={loading || (analysisStatus?.is_running ?? false)}
+                    >
+                        {status === 'updating' ? '觸發分析中...' :
+                            status === 'analyzing' ? '分析進行中...' :
+                                analysisStatus?.is_running ? '分析進行中...' :
+                                    '立即更新'}
+                    </Button>
+
+
+
+                    {status !== 'idle' && (
+                        <Chip
+                            label={`${getStatusIcon(status)} ${statusMessage}`}
+                            color={getStatusColor(status) as any}
+                            variant="outlined"
+                            size="small"
+                        />
+                    )}
+
+                    {lastUpdate && (
+                        <Typography variant="body2" color="text.secondary" sx={{ fontSize: '14px' }}>
+                            最後分析時間：{lastUpdate}
+                        </Typography>
+                    )}
+                </Box>
+
+                {/* 詳細進度顯示 */}
+                {showDetailedProgress && analysisStatus && (
+                    <Box sx={{ my: 2, px: { xs: 2, sm: 3, md: 4 } }}>
+                        <Card elevation={2}>
+                            <CardContent>
+                                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+                                    <Typography variant="h6" fontWeight="bold">
+                                        分析進度
+                                    </Typography>
+                                    <Chip
+                                        label={`${analysisStatus.progress}%`}
+                                        color={analysisStatus.error ? "error" : "primary"}
+                                        size="small"
+                                    />
+                                </Box>
+
+                                <LinearProgress
+                                    variant="determinate"
+                                    value={analysisStatus.progress}
+                                    sx={{ mb: 2, height: 8, borderRadius: 4 }}
+                                />
+
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                                    <Typography variant="body2" fontWeight="bold" color="primary">
+                                        當前階段：
+                                    </Typography>
+                                    <Typography variant="body2">
+                                        {analysisStatus.current_stage}
+                                    </Typography>
+                                </Box>
+
+                                <Typography variant="body2" color="text.secondary">
+                                    {analysisStatus.message}
+                                </Typography>
+
+                                {analysisStatus.error && (
+                                    <Alert severity="error" sx={{ mt: 2 }}>
+                                        {analysisStatus.error}
+                                    </Alert>
+                                )}
+
+                                {analysisStatus.start_time && (
+                                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+                                        開始時間：{new Date(analysisStatus.start_time).toLocaleString("zh-TW")}
+                                    </Typography>
+                                )}
+                            </CardContent>
+                        </Card>
+                    </Box>
                 )}
-                
-                {analysisStatus.start_time && (
-                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-                    開始時間：{new Date(analysisStatus.start_time).toLocaleString("zh-TW")}
-                  </Typography>
+
+                {/* 載入指示器 */}
+                {loading && !showDetailedProgress && (
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, px: { xs: 2, sm: 3, md: 4 } }}>
+                        <CircularProgress size={20} />
+                        <Typography variant="body2" color="text.secondary" sx={{ fontSize: '14px' }}>
+                            {statusMessage}
+                        </Typography>
+                    </Box>
                 )}
-              </CardContent>
-            </Card>
-          </Box>
-        )}
-        
-        {/* 載入指示器 */}
-        {loading && !showDetailedProgress && (
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, px: { xs: 2, sm: 3, md: 4 } }}>
-            <CircularProgress size={20} />
-            <Typography variant="body2" color="text.secondary" sx={{ fontSize: '14px' }}>
-              {statusMessage}
-            </Typography>
-          </Box>
-        )}
 
-        {/* 新增：頁籤導覽 */}
-        <Box sx={{ borderBottom: 1, borderColor: 'divider', my: 3 }}>
-            <Tabs value={currentTab} onChange={handleTabChange} aria-label="analysis tabs" variant="scrollable" scrollButtons="auto">
-                <Tab label="分析結果摘要" />
-                <Tab label="市場情緒" />
-                <Tab label={`股票監控清單 (${monitoredStocks.length})`} />
-                <Tab label={`歷史交易紀錄 (${tradeHistory.length})`} />
-                <Tab label="回測勝率" />
-            </Tabs>
-        </Box>
+                {/* 新增：頁籤導覽 */}
+                <Box sx={{ borderBottom: 1, borderColor: 'divider', my: 3 }}>
+                    <Tabs value={currentTab} onChange={handleTabChange} aria-label="analysis tabs" variant="scrollable" scrollButtons="auto">
+                        <Tab label="分析結果摘要" />
+                        <Tab label="市場情緒" />
+                        <Tab label={`股票監控清單 (${monitoredStocks.length})`} />
+                        <Tab label={`歷史交易紀錄 (${tradeHistory.length})`} />
+                        <Tab label="回測勝率" />
+                    </Tabs>
+                </Box>
 
-        {/* 頁籤內容 */}
-        <Box sx={{ px: { xs: 2, sm: 3, md: 4 } }}>
-            {currentTab === 0 && <AnalysisResultTab analysis={analysis} getRankColor={getRankColor} getRankIcon={getRankIcon} />}
-            {currentTab === 1 && <FearGreedChart />}
-            {currentTab === 2 && <MonitoredStocksTab stocks={monitoredStocks} onRefresh={fetchData} />}
-            {currentTab === 3 && <TradeHistoryTab trades={tradeHistory} yearlySummary={yearlySummary} monthlySummary={monthlySummary} onRefresh={fetchData} />}
-            {currentTab === 4 && <BacktestTab />}
-        </Box>
+                {/* 頁籤內容 */}
+                <Box sx={{ px: { xs: 2, sm: 3, md: 4 } }}>
+                    {currentTab === 0 && <AnalysisResultTab analysis={analysis} getRankColor={getRankColor} getRankIcon={getRankIcon} />}
+                    {currentTab === 1 && <FearGreedChart />}
+                    {currentTab === 2 && <MonitoredStocksTab stocks={monitoredStocks} onRefresh={fetchData} />}
+                    {currentTab === 3 && <TradeHistoryTab trades={tradeHistory} yearlySummary={yearlySummary} monthlySummary={monthlySummary} onRefresh={fetchData} />}
+                    {currentTab === 4 && <BacktestTab />}
+                </Box>
 
-      </Container>
-    </ThemeProvider>
-  );
+            </Container>
+        </ThemeProvider>
+    );
 }
 
 // 新元件：分析結果
@@ -490,15 +490,15 @@ const AnalysisResultTab = ({ analysis, getRankColor, getRankIcon }: any) => {
                     <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: '1fr 1fr 1fr', lg: '1fr 1fr 1fr 1fr' }, gap: 2 }}>
                         {filteredStocks.map((stock: any, index: number) => (
                             <Card
-                                    key={stock.symbol}
-                                    elevation={2}
-                                    sx={{
-                                        transition: 'all 0.3s',
-                                        '&:hover': { transform: 'translateY(-2px)', boxShadow: 6 },
-                                        ...(isMobile && { cursor: 'pointer' }) // Add cursor pointer for mobile
-                                    }}
-                                    onClick={isMobile ? () => setExpanded(expanded === `panel${index}` ? false : `panel${index}`) : undefined} // Make card clickable for mobile
-                                >
+                                key={stock.symbol}
+                                elevation={2}
+                                sx={{
+                                    transition: 'all 0.3s',
+                                    '&:hover': { transform: 'translateY(-2px)', boxShadow: 6 },
+                                    ...(isMobile && { cursor: 'pointer' }) // Add cursor pointer for mobile
+                                }}
+                                onClick={isMobile ? () => setExpanded(expanded === `panel${index}` ? false : `panel${index}`) : undefined} // Make card clickable for mobile
+                            >
                                 <CardContent sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 1, bgcolor: 'transparent' }}>
                                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
                                         <Box sx={{ width: 36, height: 36, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: getRankColor(index + 1), color: index < 3 ? 'black' : 'white', fontWeight: 'bold', fontSize: '1.2rem' }}>
@@ -805,7 +805,8 @@ const YearlySummary = ({ summary }: { summary: any }) => {
 
     useEffect(() => {
         if (summary && Object.keys(summary).length > 0) {
-            const latestYear = Object.keys(summary)[0];
+            // Sort years in descending order to get the latest year
+            const latestYear = Object.keys(summary).sort((a, b) => Number(b) - Number(a))[0];
             if (!selectedYear || !summary[selectedYear]) {
                 setSelectedYear(latestYear);
             }
@@ -847,7 +848,7 @@ const YearlySummary = ({ summary }: { summary: any }) => {
                     <FormControl size="small" sx={{ minWidth: 120 }}>
                         <InputLabel>年份</InputLabel>
                         <Select value={selectedYear} label="年份" onChange={handleYearChange}>
-                            {Object.keys(summary).map(year => (
+                            {Object.keys(summary).sort((a, b) => Number(b) - Number(a)).map(year => (
                                 <MenuItem key={year} value={year}>{year}</MenuItem>
                             ))}
                         </Select>
@@ -882,19 +883,19 @@ const YearlySummary = ({ summary }: { summary: any }) => {
 
 // 新元件：歷史交易紀錄
 const CustomTooltip = ({ active, payload, label }: any) => {
-  const theme = useTheme();
-  if (active && payload && payload.length) {
-    const value = payload[0].value as number;
-    return (
-      <Paper elevation={3} sx={{ padding: '8px 12px', backgroundColor: theme.palette.background.paper }}>
-        <Typography variant="body2" sx={{ color: theme.palette.text.secondary }}>{`${label}`}</Typography>
-        <Typography variant="body1" sx={{ fontWeight: 'bold', color: value >= 0 ? green[500] : red[500] }}>
-          {`損益: ${value.toFixed(2)}%`}
-        </Typography>
-      </Paper>
-    );
-  }
-  return null;
+    const theme = useTheme();
+    if (active && payload && payload.length) {
+        const value = payload[0].value as number;
+        return (
+            <Paper elevation={3} sx={{ padding: '8px 12px', backgroundColor: theme.palette.background.paper }}>
+                <Typography variant="body2" sx={{ color: theme.palette.text.secondary }}>{`${label}`}</Typography>
+                <Typography variant="body1" sx={{ fontWeight: 'bold', color: value >= 0 ? green[500] : red[500] }}>
+                    {`損益: ${value.toFixed(2)}%`}
+                </Typography>
+            </Paper>
+        );
+    }
+    return null;
 };
 
 const MonthlyPnlChart = ({ summary }: { summary: any }) => {
@@ -904,7 +905,8 @@ const MonthlyPnlChart = ({ summary }: { summary: any }) => {
 
     useEffect(() => {
         if (summary && Object.keys(summary).length > 0) {
-            const latestYear = Object.keys(summary)[0];
+            // Sort years in descending order to get the latest year
+            const latestYear = Object.keys(summary).sort((a, b) => Number(b) - Number(a))[0];
             if (!selectedYear || !summary[selectedYear]) {
                 setSelectedYear(latestYear);
             }
@@ -954,7 +956,7 @@ const MonthlyPnlChart = ({ summary }: { summary: any }) => {
                     <FormControl size="small" sx={{ minWidth: 120 }}>
                         <InputLabel>年份</InputLabel>
                         <Select value={selectedYear} label="年份" onChange={handleYearChange}>
-                            {Object.keys(summary).map(year => (
+                            {Object.keys(summary).sort((a, b) => Number(b) - Number(a)).map(year => (
                                 <MenuItem key={year} value={year}>{year}</MenuItem>
                             ))}
                         </Select>
@@ -965,7 +967,7 @@ const MonthlyPnlChart = ({ summary }: { summary: any }) => {
                         <BarChart data={chartData} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
                             <XAxis dataKey="name" axisLine={false} tickLine={false} tick={false} />
                             <YAxis axisLine={false} tickLine={false} tick={false} />
-                            <RechartsTooltip 
+                            <RechartsTooltip
                                 cursor={{ fill: 'rgba(206, 212, 218, 0.3)' }}
                                 content={<CustomTooltip />}
                             />
@@ -1105,7 +1107,7 @@ const TradeHistoryTab = ({ trades, yearlySummary, monthlySummary, onRefresh }: {
                     <MonthlyPnlChart summary={monthlySummary} />
                 </Box>
             </Box>
-            
+
             {/* 匯入/匯出按鈕 */}
             <Box sx={{ mb: 2, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
                 <input
@@ -1141,44 +1143,44 @@ const TradeHistoryTab = ({ trades, yearlySummary, monthlySummary, onRefresh }: {
             {/* 數據表格 */}
             <Box sx={{ overflowX: 'auto' }}>
                 <TableContainer component={Paper} elevation={2}>
-                <Table sx={{ minWidth: 650 }} aria-label="trade history table">
-                    <TableHead>
-                        <TableRow>
-                            <TableCell sx={{ whiteSpace: 'nowrap', minWidth: '200px' }}>股票代號</TableCell>
-                            <TableCell align="left" sx={{ whiteSpace: 'nowrap' }}>進場日期</TableCell>
-                            <TableCell align="left" sx={{ whiteSpace: 'nowrap' }}>進場價格</TableCell>
-                            <TableCell align="left" sx={{ whiteSpace: 'nowrap' }}>出場日期</TableCell>
-                            <TableCell align="left" sx={{ whiteSpace: 'nowrap' }}>出場價格</TableCell>
-                            <TableCell align="left" sx={{ whiteSpace: 'nowrap' }}>損益</TableCell>
-                            <TableCell sx={{ whiteSpace: 'nowrap' }}>出場原因</TableCell>
-                        </TableRow>
-                    </TableHead>
-                    <TableBody>
-                        {(trades ? [...trades].sort((a, b) => new Date(b.exit_date).getTime() - new Date(a.exit_date).getTime()) : []).map((trade, index) => (
-                            <TableRow key={`${trade.symbol}-${index}`} sx={{ '&:last-child td, &:last-child th': { border: 0 } }}>
-                                <TableCell component="th" scope="row">
-                                    <Typography variant="subtitle2" fontWeight="bold" sx={{ fontSize: '1rem' }}>{trade.symbol}</Typography>
-                                    <Typography variant="caption" color="text.secondary" sx={{ fontSize: '1rem' }}>{trade.name}</Typography>
-                                </TableCell>
-                                <TableCell align="left" sx={{ fontSize: '1rem' }}>{new Date(trade.entry_date).toLocaleDateString()}</TableCell>
-                                <TableCell align="left" sx={{ fontSize: '1rem' }}>${trade.entry_price?.toFixed(2)}</TableCell>
-                                <TableCell align="left" sx={{ fontSize: '1rem' }}>{new Date(trade.exit_date).toLocaleDateString()}</TableCell>
-                                <TableCell align="left" sx={{ fontSize: '1rem' }}>${trade.exit_price?.toFixed(2)}</TableCell>
-                                <TableCell align="left">
-                                    <Chip
-                                        label={`${trade.profit_loss_percent?.toFixed(2)}%`}
-                                        color={trade.profit_loss_percent >= 0 ? "success" : "error"}
-                                        size="small"
-                                    />
-                                </TableCell>
-                                <TableCell>
-                                    <Button size="small" onClick={() => handleOpenModal(trade)}>查看原因</Button>
-                                </TableCell>
+                    <Table sx={{ minWidth: 650 }} aria-label="trade history table">
+                        <TableHead>
+                            <TableRow>
+                                <TableCell sx={{ whiteSpace: 'nowrap', minWidth: '200px' }}>股票代號</TableCell>
+                                <TableCell align="left" sx={{ whiteSpace: 'nowrap' }}>進場日期</TableCell>
+                                <TableCell align="left" sx={{ whiteSpace: 'nowrap' }}>進場價格</TableCell>
+                                <TableCell align="left" sx={{ whiteSpace: 'nowrap' }}>出場日期</TableCell>
+                                <TableCell align="left" sx={{ whiteSpace: 'nowrap' }}>出場價格</TableCell>
+                                <TableCell align="left" sx={{ whiteSpace: 'nowrap' }}>損益</TableCell>
+                                <TableCell sx={{ whiteSpace: 'nowrap' }}>出場原因</TableCell>
                             </TableRow>
-                        ))}
-                    </TableBody>
-                </Table>
-            </TableContainer>
+                        </TableHead>
+                        <TableBody>
+                            {(trades ? [...trades].sort((a, b) => new Date(b.exit_date).getTime() - new Date(a.exit_date).getTime()) : []).map((trade, index) => (
+                                <TableRow key={`${trade.symbol}-${index}`} sx={{ '&:last-child td, &:last-child th': { border: 0 } }}>
+                                    <TableCell component="th" scope="row">
+                                        <Typography variant="subtitle2" fontWeight="bold" sx={{ fontSize: '1rem' }}>{trade.symbol}</Typography>
+                                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: '1rem' }}>{trade.name}</Typography>
+                                    </TableCell>
+                                    <TableCell align="left" sx={{ fontSize: '1rem' }}>{new Date(trade.entry_date).toLocaleDateString()}</TableCell>
+                                    <TableCell align="left" sx={{ fontSize: '1rem' }}>${trade.entry_price?.toFixed(2)}</TableCell>
+                                    <TableCell align="left" sx={{ fontSize: '1rem' }}>{new Date(trade.exit_date).toLocaleDateString()}</TableCell>
+                                    <TableCell align="left" sx={{ fontSize: '1rem' }}>${trade.exit_price?.toFixed(2)}</TableCell>
+                                    <TableCell align="left">
+                                        <Chip
+                                            label={`${trade.profit_loss_percent?.toFixed(2)}%`}
+                                            color={trade.profit_loss_percent >= 0 ? "success" : "error"}
+                                            size="small"
+                                        />
+                                    </TableCell>
+                                    <TableCell>
+                                        <Button size="small" onClick={() => handleOpenModal(trade)}>查看原因</Button>
+                                    </TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                </TableContainer>
             </Box>
             <ExitReasonModal trade={selectedTrade} open={openModal} handleClose={handleCloseModal} />
         </>
@@ -1236,7 +1238,7 @@ const ExitReasonModal = ({ trade, open, handleClose }: { trade: TradeHistory | n
                                     <ListItemIcon sx={{ minWidth: 32, mt: 0.5 }}>
                                         <Chip label={`#${index + 1}`} size="small" />
                                     </ListItemIcon>
-                                    <ListItemText 
+                                    <ListItemText
                                         primary={reason}
                                         primaryTypographyProps={{ variant: 'body1', sx: { fontSize: '1rem' } }}
                                     />
@@ -1244,7 +1246,7 @@ const ExitReasonModal = ({ trade, open, handleClose }: { trade: TradeHistory | n
                             ))}
                         </List>
                     </Box>
-                    
+
                 </Box>
             </Fade>
         </Modal>
@@ -1488,10 +1490,10 @@ const BacktestTab = () => {
                                         }}>
                                             <Typography component="span" sx={{
                                                 color: log.includes('錯誤') || log.includes('失敗') ? '#ff6b6b' :
-                                                       log.includes('成功') || log.includes('完成') ? '#51cf66' :
-                                                       log.includes('警告') ? '#ffd43b' :
-                                                       log.includes('進場信號') ? '#74c0fc' :
-                                                       '#00ff00',
+                                                    log.includes('成功') || log.includes('完成') ? '#51cf66' :
+                                                        log.includes('警告') ? '#ffd43b' :
+                                                            log.includes('進場信號') ? '#74c0fc' :
+                                                                '#00ff00',
                                                 fontSize: '0.8rem',
                                                 fontFamily: 'inherit'
                                             }}>

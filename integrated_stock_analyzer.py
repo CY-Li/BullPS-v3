@@ -2292,8 +2292,24 @@ class NpEncoder(json.JSONEncoder):
         return super(NpEncoder, self).default(obj)
 
 def main():
-    print("啟動整合股票分析系統...")
+    print("🚀 啟動綜合股票分析器...")
     
+    # 自動更新股票清單 (Auto Update Watchlist)
+    print("\n📦 檢查並更新股票監控清單...")
+    try:
+        import update_watchlist
+        print("   正在執行 update_watchlist.py 以獲取最新熱門股票...")
+        success = update_watchlist.run_update()
+        if success:
+            print("   ✅ 股票清單更新成功，將使用最新數據進行分析。")
+        else:
+            print("   ⚠️ 股票清單更新失敗 (可能因網絡或來源問題)，將使用現有清單繼續執行。")
+    except Exception as e:
+        print(f"   ⚠️ 執行自動更新時發生錯誤: {e}")
+        print("   將跳過更新步驟，使用現有清單。")
+    
+    # 設定分析參數
+    # 如果是週六或週日，查看下週數據
     analyzer = IntegratedStockAnalyzer()
     
     print("開始股票分析...")

@@ -218,27 +218,39 @@ def evaluate_smart_sar_exit(trade, current_analysis, current_dt=None):
         required_confirmation = max(required_confirmation - 1, 2)
 
     # 3. 技術指標確認
+    # [Fix] 對於短期持倉（<3天），忽略 "RSI超買" 和 "放量" 作為負面信號
+    # 因為這些通常是強勢突破的特徵
+    ignore_breakout_signals = (holding_days < 3)
+
     current_rsi = current_analysis.get('rsi', 50)
     current_macd = current_analysis.get('macd', 0)
     current_volume_ratio = current_analysis.get('volume_ratio', 1)
 
     # RSI確認
-    if current_rsi > 70:
-        confirmation_score += 2
-        confirmation_factors.append("RSI超買")
-    elif current_rsi > 60:
-        confirmation_score += 1
-        confirmation_factors.append("RSI偏高")
+    if not ignore_breakout_signals:
+        if current_rsi > 70:
+            confirmation_score += 2
+            confirmation_factors.append("RSI超買")
+        elif current_rsi > 60:
+            confirmation_score += 1
+            confirmation_factors.append("RSI偏高")
 
-    # MACD確認
+    # MACD確認 (MACD轉負通常是真跌勢，保留)
     if current_macd < 0:
         confirmation_score += 2
         confirmation_factors.append("MACD轉負")
 
     # 成交量確認
-    if current_volume_ratio > 1.5:
-        confirmation_score += 1
-        confirmation_factors.append("放量下跌")
+    if not ignore_breakout_signals:
+        if current_volume_ratio > 1.5:
+            confirmation_score += 1
+            confirmation_factors.append("放量下跌")
+        
+    # [Fix] Day 0 特別保護：除非大跌，否則不輕易因盤中波動出場
+    if holding_days == 0 and profit_pct > -2.0:
+         # 如果虧損在 2% 以內，且是第一天，強制要求更高的確認分數 (幾乎是不出場)
+        required_confirmation += 5
+        confirmation_factors.append("Day0波動保護")
 
     # 4. 價格結構確認
     sar_penetration = ((current_sar - current_price) / current_price) * 100
