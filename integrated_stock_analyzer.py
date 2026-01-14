@@ -2297,6 +2297,13 @@ def main():
     # 自動更新股票清單 (Auto Update Watchlist)
     print("\n📦 檢查並更新股票監控清單...")
     try:
+        import sys
+        import os
+        # 確保可以導入同目錄下的 update_watchlist.py
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        if current_dir not in sys.path:
+            sys.path.append(current_dir)
+            
         import update_watchlist
         print("   正在執行 update_watchlist.py 以獲取最新熱門股票...")
         success = update_watchlist.run_update()
