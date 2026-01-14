@@ -26,13 +26,15 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 # 先複製 requirements.txt 以利用緩存層
 COPY requirements.txt ./
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+    pip install --no-cache-dir -r requirements.txt && \
+    playwright install chromium --with-deps
 
 # 複製後端代碼和數據文件
 COPY backend ./backend
 COPY stock_watchlist.json ./
 # COPY analysis_result.json ./
 COPY integrated_stock_analyzer.py ./
+COPY update_watchlist.py ./
 COPY enhanced_confirmation_system.py ./
 COPY multi_timeframe_analyzer.py ./
 COPY api_error_handler.py ./
