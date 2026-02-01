@@ -28,6 +28,7 @@ warnings.filterwarnings('ignore')
 from pathlib import Path
 from enhanced_confirmation_system import EnhancedConfirmationSystem
 from multi_timeframe_analyzer import MultiTimeframeAnalyzer
+from bps_optimizer import BPSOptimizer
 
 class IntegratedStockAnalyzer:
     def __init__(self, watchlist_file='stock_watchlist.json'):
@@ -37,6 +38,7 @@ class IntegratedStockAnalyzer:
         self.market_sentiment = None  # 市場情緒指標
         self.confirmation_system = EnhancedConfirmationSystem()  # 強化確認系統
         self.mtf_analyzer = MultiTimeframeAnalyzer()  # 多時間框架分析器
+        self.bps_optimizer = BPSOptimizer()  # BPS 策略優化器
         
     def load_watchlist(self):
         try:
@@ -2099,6 +2101,27 @@ class IntegratedStockAnalyzer:
             'price_structure_reversal': latest_signal.get('price_structure_reversal', 0)
         })
         
+        # === 新增：BPS 策略優化 ===
+        bps_suggestions = self.bps_optimizer.suggest_bps_strikes(symbol)
+        earnings_risk = self.bps_optimizer.check_earnings_risk(symbol)
+        
+        if bps_suggestions:
+            base_result.update({
+                'bps_short_put': bps_suggestions['short_put_strike'],
+                'bps_long_put': bps_suggestions['long_put_strike'],
+                'bps_safety_margin': bps_suggestions['safety_margin_pct'],
+                'expected_move_1sd': bps_suggestions['expected_move_1sd']
+            })
+        
+        if earnings_risk:
+            base_result.update({
+                'earnings_date': earnings_risk.get('earnings_date'),
+                'days_to_earnings': earnings_risk.get('days_to_earnings'),
+                'earnings_high_risk': earnings_risk.get('high_risk')
+            })
+            if earnings_risk.get('high_risk'):
+                base_result['confidence_factors'].append(f"⚠️ 財報風險：{earnings_risk['days_to_earnings']}天後發布財報")
+
         return base_result
     
     def analyze_specific_stocks(self, symbols):
