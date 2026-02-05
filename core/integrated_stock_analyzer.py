@@ -277,9 +277,12 @@ class IntegratedStockAnalyzer:
             # 6. 計算信心度 (Confidence Level)
             # 基於多指標共振
             confidence_level = 50 # 基礎分
-            if rsi < 40 and macd_hist > 0: confidence_level += 20 # 背離
-            if current_price > ma20: confidence_level += 15 # 站上月線
-            if reversal_conf > 50: confidence_level += 15 # 反轉確認
+            if rsi < 40 and macd_hist > 0: 
+                confidence_level += 20 # 背離
+            if current_price > ma20: 
+                confidence_level += 15 # 站上月線
+            if reversal_conf > 40: # 修正：既然 max 是 100，40 算是一個強訊號
+                confidence_level += 15 # 反轉確認
             
             # 7. 構建返回結果 (Snapshot 格式)
             result = {
@@ -471,7 +474,9 @@ class IntegratedStockAnalyzer:
                     timing_score += 15
                     timing_factors.append("錘子線形態")
 
-            return {'timing_score': timing_score, 'timing_factors': timing_factors}
+            # 歸一化：假設 60 分為滿分 (常見強訊號組合)
+            normalized_timing = min(100, (timing_score / 60) * 100)
+            return {'timing_score': round(normalized_timing, 1), 'timing_factors': timing_factors}
         except Exception as e:
             # print(f"Score calc error: {e}")
             return {'timing_score': 0, 'timing_factors': []}
@@ -497,9 +502,14 @@ class IntegratedStockAnalyzer:
     def calculate_trend_reversal_confirmation(self, df): 
         try:
             score = 0
-            if df['Close'].iloc[-1] > df['MA20'].iloc[-1]: score += 10
-            if df['RSI'].iloc[-1] < 30: score += 10
-            if df['MACD'].iloc[-1] > 0: score += 10
+            # 增加加權與更多條件
+            if df['Close'].iloc[-1] > df['MA20'].iloc[-1]: score += 20
+            if df['RSI'].iloc[-1] < 35: score += 15
+            if df['MACD_Histogram'].iloc[-1] > 0 and df['MACD_Histogram'].iloc[-2] <= 0: score += 25 # 剛翻紅加重
+            elif df['MACD_Histogram'].iloc[-1] > 0: score += 10
+            if df['Close'].iloc[-1] > df['SAR'].iloc[-1]: score += 20
+            if df['Volume_Ratio'].iloc[-1] > 1.2: score += 20
+            
             return min(100, score)
         except: return 0
 
@@ -567,9 +577,10 @@ if __name__ == "__main__":
         for i, sym in enumerate(scan_list):
             print(f"[{i+1}/{len(scan_list)}] {sym}...", end='\r')
             res = analyzer.analyze_stock(sym)
-            if res and res['composite_score'] >= 80: # 只顯示 80 分以上的
+            if res:
                 candidates.append(res)
-                print(f"  ✨ {sym} Found! Score: {res['composite_score']}, Conf: {res['confidence_level']}%")
+                if res['composite_score'] >= 75: # 僅在掃描時即時標註高分股
+                    print(f"  ✨ {sym} Found! Score: {res['composite_score']}, Conf: {res['confidence_level']}%")
         
         candidates.sort(key=lambda x: x['composite_score'], reverse=True)
         

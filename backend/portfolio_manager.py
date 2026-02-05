@@ -406,11 +406,11 @@ def evaluate_exit_confidence(trade, latest_analysis):
     reversal_strength = current_snapshot.get('reversal_strength') or 0
     reversal_reliability = current_snapshot.get('reversal_reliability') or 0
 
-    if trend_reversal_confirmation < 40: # 趨勢反轉確認度低
+    if trend_reversal_confirmation < 40: # 修正：低端反轉強度不足，視為持倉信心下降
+        base_exit_score += 0.15
+    if reversal_strength < 40:
         base_exit_score += 0.1
-    if reversal_strength < 50: # 反轉強度不足
-        base_exit_score += 0.1
-    if reversal_reliability < 50: # 反轉可信度低
+    if reversal_reliability < 40:
         base_exit_score += 0.1
 
     # 確保信心度在0到1之間

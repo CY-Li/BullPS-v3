@@ -15,14 +15,24 @@ from pathlib import Path
 import pytz
 
 # 複用現有的分析器
-from integrated_stock_analyzer import IntegratedStockAnalyzer
+import sys
+import os
+# 將當前目錄和 core 目錄加入路徑
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), 'core')))
+sys.path.append(os.path.abspath(os.path.dirname(__file__)))
+
+from core.integrated_stock_analyzer import IntegratedStockAnalyzer
 # 複用出場評估邏輯
-from backend.portfolio_manager import evaluate_exit_confidence, load_json_file, ANALYSIS_RESULT_FILE
+try:
+    from backend.portfolio_manager import evaluate_exit_confidence, load_json_file
+except ImportError:
+    # 這裡可能需要根據實際 backend 資料夾結構調整
+    pass
 
 warnings.filterwarnings('ignore')
 
 # --- 回測參數設定 ---
-START_DATE = "2024-01-01"
+START_DATE = "2026-01-01"
 END_DATE = datetime.now().strftime("%Y-%m-%d")
 TRADE_AMOUNT_USD = 100.00  # 每次交易投入100美元
 WATCHLIST_FILE = 'stock_watchlist.json'
@@ -135,82 +145,36 @@ class Backtester:
 
         symbols_to_sell = []
         for symbol, trade_info in self.portfolio.items():
-            # 確保至少持有一個交易日
             if current_day <= trade_info['entry_date']:
                 continue
 
-            data_slice = self.all_data[symbol].loc[:current_day]
-            # Parabolic SAR 需要一些數據點來計算，這裡保持一個合理的最小值
-            if data_slice.empty or len(data_slice) < 20:
+            # 使用新版的分析方法
+            analysis_result = self.analyze_at_date(symbol, current_day)
+            if not analysis_result:
                 continue
 
-            # --- 使用增強的 Parabolic SAR 作為移動停損 ---
-            # 必須先計算包含當前日在內的所有指標
-            df_with_indicators = self.analyzer.calculate_technical_indicators(data_slice)
-            if df_with_indicators is None or df_with_indicators.empty:
+            current_price = analysis_result['current_price']
+            
+            # --- 出場邏輯 (信心侵蝕) ---
+            # 1. 信心度過低
+            if analysis_result['confidence_level'] < 40:
+                print(f"   - [出場信號] {symbol}: 信心度低於 40% ({analysis_result['confidence_level']}%)")
+                symbols_to_sell.append(symbol)
                 continue
 
-            current_price = df_with_indicators['Close'].iloc[-1]
-            current_sar = df_with_indicators['SAR'].iloc[-1]
-
-            # 1. 檢查數據有效性
-            if pd.isna(current_price) or pd.isna(current_sar) or current_sar is None:
-                print(f"   - [WARNING] {symbol} 在 {current_day.strftime('%Y-%m-%d')} 缺少價格或SAR數據，跳過SAR評估。")
-                # 如果SAR數據無效，只使用綜合模型評估
-                latest_analysis_snapshot = self.run_analysis_on_slice(symbol, data_slice)
-                if latest_analysis_snapshot:
-                    from backend.portfolio_manager import evaluate_exit_confidence
-                    exit_report = evaluate_exit_confidence(trade_info, latest_analysis_snapshot)
-
-                    if exit_report.get('exit_confidence', 0.0) >= 0.8:
-                        print(f"   - [綜合出場信號] {symbol}: 出場信心度達到 {exit_report['exit_confidence']:.2f} (>= 0.8)。")
-                        should_sell = True
+            # 2. 綜合評分轉弱
+            if analysis_result['composite_score'] < 50:
+                print(f"   - [出場信號] {symbol}: 綜合評分轉弱 ({analysis_result['composite_score']})")
+                symbols_to_sell.append(symbol)
                 continue
-
-            should_sell = False
-
-            # 2. 使用智能SAR停損評估
-            latest_analysis_snapshot = self.run_analysis_on_slice(symbol, data_slice)
-            if latest_analysis_snapshot:
-                # 確保SAR數據有效後再添加到分析快照
-                if pd.notna(current_sar) and current_sar is not None:
-                    latest_analysis_snapshot['sar'] = float(current_sar)
-                else:
-                    latest_analysis_snapshot['sar'] = None
-
-                # 使用智能SAR評估
-                from backend.portfolio_manager import evaluate_smart_sar_exit
-
-                # 調試信息
-                print(f"   - [DEBUG] {symbol}: current_price={latest_analysis_snapshot.get('current_price')}, sar={latest_analysis_snapshot.get('sar')}")
-
-                sar_decision = evaluate_smart_sar_exit(trade_info, latest_analysis_snapshot)
-
-                if sar_decision['should_exit']:
-                    print(f"   - [SAR出場信號] {symbol}: {sar_decision['reason']}")
-                    print(f"     確認分數: {sar_decision['confirmation_score']}/{sar_decision['required_confirmation']}")
-                    print(f"     確認因素: {', '.join(sar_decision['confirmation_factors'])}")
-                    should_sell = True
-                else:
-                    # 3. 若未觸發SAR停損，才執行綜合模型評估
-                    from backend.portfolio_manager import evaluate_exit_confidence
-                    exit_report = evaluate_exit_confidence(trade_info, latest_analysis_snapshot)
-
-                    if exit_report.get('exit_confidence', 0.0) >= 0.8:
-                        print(f"   - [綜合出場信號] {symbol}: 出場信心度達到 {exit_report['exit_confidence']:.2f} (>= 0.8)。")
-                        should_sell = True
-            else:
-                # 如果無法獲得完整分析，回退到基本SAR檢查
-                if current_price < current_sar:
-                    print(f"   - [基本SAR出場] {symbol}: 觸發基本SAR停損 (價格: {current_price:.2f} < SAR: {current_sar:.2f})。")
-                    should_sell = True
-
-            if should_sell:
+            
+            # 3. 基礎移動停損 (跌破關鍵支撐)
+            if current_price < analysis_result['sar'] * 0.98: # 寬鬆一點
+                print(f"   - [出場信號] {symbol}: 跌破 SAR 支撐")
                 symbols_to_sell.append(symbol)
 
         for symbol in symbols_to_sell:
             if next_day not in self.all_data[symbol].index:
-                print(f"   - [賣出失敗] {symbol} 在 {next_day.strftime('%Y-%m-%d')} 無數據。")
                 continue
             exit_price = self.all_data[symbol].loc[next_day]['Open']
             self.execute_sell(symbol, next_day, exit_price)
@@ -220,100 +184,87 @@ class Backtester:
             if symbol in self.portfolio:
                 continue
             
-            if symbol not in self.all_data:
-                continue
-
-            data_slice = self.all_data[symbol].loc[:current_day]
-            if data_slice.empty or len(data_slice) < 60:
-                continue
-
-            analysis_result = self.run_analysis_on_slice(symbol, data_slice)
+            analysis_result = self.analyze_at_date(symbol, current_day)
             if not analysis_result:
                 continue
 
-            composite_score = analysis_result.get('composite_score', 0)
-            confidence_score = analysis_result.get('confidence_score', 0)
-
-            # 動態進場閾值調整
-            market_sentiment = getattr(self.analyzer, 'market_sentiment', None)
-            if market_sentiment is None:
-                market_sentiment = self.analyzer.analyze_market_sentiment()
-                self.analyzer.market_sentiment = market_sentiment
-
-            # 根據市場情緒調整閾值
-            market_score = market_sentiment['score']
-            if market_score >= 70:
-                # 牛市環境：稍微放寬條件
-                composite_threshold = 88
-                confidence_threshold = 75
-            elif market_score >= 55:
-                # 正面環境：標準條件
-                composite_threshold = 90
-                confidence_threshold = 80
-            elif market_score >= 45:
-                # 中性環境：稍微提高條件
-                composite_threshold = 92
-                confidence_threshold = 82
-            else:
-                # 熊市環境：大幅提高條件
-                composite_threshold = 95
-                confidence_threshold = 85
-
-            # 檢查進場條件
-            if composite_score >= composite_threshold and confidence_score >= confidence_threshold:
-                print(f"   - [進場信號] {symbol}: 綜合評分 {composite_score:.2f}, 信心度 {confidence_score:.2f}")
-                print(f"     市場情緒: {market_sentiment['sentiment']} ({market_score:.0f}分)")
-                print(f"     進場閾值: 綜合>={composite_threshold}, 信心>={confidence_threshold}")
-
+            composite_score = analysis_result['composite_score']
+            confidence_level = analysis_result['confidence_level']
+            
+            # 進場條件：評分 >= 75 且 信心度 >= 70% (針對優化後的評分)
+            if composite_score >= 75 and confidence_level >= 70:
+                print(f"   - [進場信號] {symbol}: 綜合評分 {composite_score:.1f}, 信心度 {confidence_level}%")
                 if next_day not in self.all_data[symbol].index:
-                    print(f"   - [買入失敗] {symbol} 在 {next_day.strftime('%Y-%m-%d')} 無數據。")
                     continue
                 entry_price = self.all_data[symbol].loc[next_day]['Open']
                 self.execute_buy(symbol, next_day, entry_price, analysis_result)
 
-    def run_analysis_on_slice(self, symbol, data_slice):
-        df = self.analyzer.calculate_technical_indicators(data_slice)
-        if df is None: return None
-
-        signals = self.analyzer.detect_bullish_signals(df)
-        if not signals: return None
+    def analyze_at_date(self, symbol, target_date):
+        """在特定日期模擬 analyze_stock 的行為"""
+        if symbol not in self.all_data:
+            return None
+            
+        full_df = self.all_data[symbol]
+        data_slice = full_df.loc[:target_date]
         
-        latest_signal = signals[-1]
-
-        long_signal_price, long_signal_confidence = self.analyzer.calculate_long_signal_price(df)
-        entry_advice, confidence_score, confidence_level, confidence_factors = self.analyzer.assess_entry_opportunity(df)
-        
-        current_price = df['Close'].iloc[-1]
-        distance_to_signal = ((current_price - long_signal_price) / long_signal_price) * 100
-        
-        days_since_signal = (df.index[-1] - latest_signal['date']).days
-        max_days = 30
-        long_days_score = max(0, (max_days - days_since_signal) / max_days * 100)
-        distance_score = np.maximum(0, 100 - distance_to_signal)
-        entry_scores = {'強烈推薦進場': 100, '建議進場': 80, '觀望': 50, '不建議進場': 20}
-        entry_score = entry_scores.get(entry_advice, 0)
-        
-        composite_score = (long_days_score * 0.3 + distance_score * 0.3 + entry_score * 0.2 + confidence_score * 0.2)
-
-        return {
-            'symbol': symbol,
-            'current_price': current_price,
-            'rsi': df['RSI'].iloc[-1] if 'RSI' in df.columns else None,
-            'macd': df['MACD'].iloc[-1] if 'MACD' in df.columns else None,
-            'volume_ratio': df['Volume_Ratio'].iloc[-1] if 'Volume_Ratio' in df.columns else None,
-            'confidence_factors': confidence_factors,
-            'composite_score': composite_score,
-            'confidence_score': confidence_score,
-            'trend_reversal_confirmation': df['Trend_Reversal_Confirmation'].iloc[-1],
-            'reversal_strength': df['Reversal_Strength'].iloc[-1],
-            'reversal_reliability': df['Reversal_Reliability'].iloc[-1],
-            'short_term_momentum_turn': df['Short_Term_Momentum_Turn'].iloc[-1],
-            'initial_analysis_snapshot': {
+        if len(data_slice) < 30:
+            return None
+            
+        # 由於 IntegratedStockAnalyzer 的 analyze_stock 預設抓取 yfinance 資料
+        # 我們需要稍微修改一下，讓它能處理我們傳入的 data_slice
+        # 這裡我們手動模擬它的分析流程
+        try:
+            df_with_inds = self.analyzer.calculate_technical_indicators(data_slice)
+            if df_with_inds is None: return None
+            
+            # 以下邏輯同步自 IntegratedStockAnalyzer.analyze_stock
+            current_price = df_with_inds['Close'].iloc[-1]
+            rsi = df_with_inds['RSI'].iloc[-1]
+            macd_hist = df_with_inds['MACD_Histogram'].iloc[-1]
+            ma20 = df_with_inds['MA20'].iloc[-1]
+            sar = df_with_inds['SAR'].iloc[-1]
+            
+            # 使用已更新的 analyzer 方法
+            timing_res = self.analyzer.calculate_entry_timing_score(df_with_inds)
+            timing_score = timing_res['timing_score']
+            timing_factors = timing_res['timing_factors']
+            
+            reversal_conf = self.analyzer.calculate_trend_reversal_confirmation(df_with_inds)
+            support_reliability = df_with_inds['Support_Reliability'].iloc[-1]
+            
+            # 簡單加權平均
+            composite_score = (timing_score * 0.4) + (reversal_conf * 0.3) + (min(100, support_reliability) * 0.3)
+            
+            # 計算信心度
+            confidence_level = 50 
+            if rsi < 40 and macd_hist > 0: confidence_level += 20
+            if current_price > ma20: confidence_level += 15
+            if reversal_conf > 40: confidence_level += 15
+            
+            return {
                 'symbol': symbol,
-                'entry_price': current_price,
-                'confidence_factors': confidence_factors,
+                'current_price': current_price,
+                'composite_score': composite_score,
+                'confidence_level': min(100, confidence_level),
+                'confidence_score': min(100, confidence_level),
+                'sar': sar,
+                'rsi': rsi,
+                'macd_histogram': macd_hist,
+                'ma20': ma20,
+                'reversal_confirmation': reversal_conf,
+                'trend_reversal_confirmation': reversal_conf,
+                'reversal_strength': df_with_inds['Reversal_Strength'].iloc[-1],
+                'reversal_reliability': df_with_inds['Reversal_Reliability'].iloc[-1],
+                'short_term_momentum_turn': df_with_inds['Short_Term_Momentum_Turn'].iloc[-1],
+                'initial_analysis_snapshot': {
+                    'symbol': symbol,
+                    'entry_price': current_price,
+                    'confidence_factors': timing_factors
+                }
             }
-        }
+        except Exception as e:
+            # print(f"Analysis error at date: {e}")
+            return None
 
     def execute_buy(self, symbol, date, price, analysis_result):
         if pd.isna(price) or price == 0:

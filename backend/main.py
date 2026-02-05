@@ -179,7 +179,7 @@ def run_stock_analysis():
         
         # 階段1: 數據獲取與分析
         update_status("正在分析股票...", 30, "數據分析中")
-        subprocess.run(["python", "integrated_stock_analyzer.py"], check=True, cwd=BASE_DIR)
+        subprocess.run(["python", "core/integrated_stock_analyzer.py"], check=True, cwd=BASE_DIR)
         
         # 階段2.5: 比對並更新監控中的股票分析快照
         update_status("正在比對並更新監控股票分析快照...", 65, "數據比對中")

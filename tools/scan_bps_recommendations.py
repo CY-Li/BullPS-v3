@@ -1,5 +1,11 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
+"""
+BPS 交易推薦器 (BPS Trade Recommender)
+=====================================
+用途：
+1. 掃描清單中技術面評分 > 75 且信心度 > 70 的強勢標的。
+2. 自動呼叫 BPSOptimizer 建議 Short/Long Put 履約價。
+3. 獲取即時選擇權權利金並計算 ROI，提供具體的交易策略建議。
+"""
 
 import sys
 import os
@@ -137,14 +143,14 @@ def main():
             timing_score = analysis_result.get('timing_score', 0)
             
             # 嚴格篩選標準：
-            # 1. 綜合評分 >= 85 (原定 90，稍微放寬以避免漏掉潛力股)
-            # 2. 信心度 >= 75 (原定 80)
-            # 3. 必須有 BPS 推薦理由 (timing_factors 不為空)
+            # 嚴格篩選標準 (與 Backtester 保持一致)：
+            # 1. 綜合評分 >= 75
+            # 2. 信心度 >= 70%
             
-            # 特例：如果是大型權值股 (如 AAPL, MSFT)，評分標準可微調 (權值股通常分數較穩定)
+            # 特例：如果是大型權值股 (如 AAPL, MSFT)，評分標準可微調
             is_mega_cap = symbol in ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA']
-            threshold_score = 80 if is_mega_cap else 85
-            threshold_conf = 70 if is_mega_cap else 75
+            threshold_score = 70 if is_mega_cap else 75
+            threshold_conf = 65 if is_mega_cap else 70
             
             if composite_score >= threshold_score and confidence_level >= threshold_conf:
                 # 這是候選名單

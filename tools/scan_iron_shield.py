@@ -1,12 +1,10 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
-BullPS-v4 智能掃描器 (Project Iron Shield)
-=========================================
-整合 V4 核心邏輯：
-1. 技術面：支撐簇 (Support Clusters) + 反轉確認
-2. 統計面：IV Rank 過濾 (拒絕低波動風險)
-3. 數據面：紀錄 Erosion Snapshot (供未來監控使用)
+Iron Shield 高階監控掃描器 (Iron Shield Monitor Scanner)
+=======================================================
+用途：
+1. 高品質篩選：除了技術評分外，額外過濾 IV Rank > 20 的標的，確保權利金充足。
+2. 理由快照：自動記錄進場時的技術面指標 (RSI, CC, SAR 等)。
+3. 自動聯動：生成的快照會用於 portfolio_manager.py，當「進場理由消失」時自動提示出場。
 """
 
 import sys
@@ -109,26 +107,28 @@ def main():
                 print(f"  [Error] {symbol} No Data")
                 continue
             
-            df = analyzer.calculate_technical_indicators(data)
-            timing_res = analyzer.calculate_entry_timing_score(df)
-            score = timing_res['timing_score']
+            analysis_result = analyzer.analyze_stock(symbol)
+            if not analysis_result:
+                continue
+
+            composite_score = analysis_result.get('composite_score', 0)
+            confidence_level = analysis_result.get('confidence_level', 0)
             
-            # V4 門檻：技術面必須有一定強度 (支撐/反轉)
-            if score < 50: 
-                print(f"  [Low Score] {symbol}: {score}")
+            # V4 門檻 (同步自 Backtester)：
+            if composite_score < 75 or confidence_level < 70:
+                # print(f"  [Low Score] {symbol}: {composite_score}")
                 continue 
 
             # 2. 統計面過濾 (IV Rank)
             bps_setup = optimizer.suggest_bps_strikes(symbol)
             if not bps_setup: 
-                print(f"  [Error] {symbol} BPS Setup Failed")
                 continue
             
             iv_rank = bps_setup.get('iv_rank', 50)
             
             # V4 核心濾網：拒絕低波動 (IV Rank < 20)
             if iv_rank < 20: 
-                print(f"  [Skip] {symbol} IV Rank {iv_rank:.1f} too low (Score: {score})")
+                # print(f"  [Skip] {symbol} IV Rank {iv_rank:.1f} too low")
                 continue
                 
             # 3. 獲取真實權利金
@@ -140,7 +140,6 @@ def main():
             )
             
             if not premium_data:
-                print(f"  [Skip] {symbol} No Options Data: {err}")
                 continue
             
             if premium_data and premium_data['credit'] > 0.05:
@@ -150,27 +149,29 @@ def main():
                 roi = (premium_data['credit'] / risk) * 100
                 
                 # 建立 Erosion Snapshot (快照)
+                # 使用分析結果中的值
                 snapshot = {
-                    'MA20': df['MA20'].iloc[-1],
-                    'RSI': df['RSI'].iloc[-1],
-                    'MACD_Hist': df['MACD_Histogram'].iloc[-1],
-                    'Close': df['Close'].iloc[-1],
-                    'SAR': df['SAR'].iloc[-1]
+                    'MA20': analysis_result.get('ma20'),
+                    'RSI': analysis_result.get('rsi'),
+                    'MACD_Hist': analysis_result.get('macd_histogram'),
+                    'Close': analysis_result.get('current_price'),
+                    'SAR': analysis_result.get('sar')
                 }
                 
                 candidates.append({
                     'symbol': symbol,
-                    'price': bps_setup['current_price'],
-                    'score': score,
+                    'price': analysis_result.get('current_price'),
+                    'score': composite_score,
+                    'confidence': confidence_level,
                     'iv_rank': iv_rank,
                     'expiry': premium_data['expiry'],
                     'strikes': f"{premium_data['short_strike']}/{premium_data['long_strike']}",
                     'credit': round(premium_data['credit'], 2),
                     'roi': round(roi, 2),
-                    'snapshot': snapshot, # 關鍵：把快照存下來
-                    'reasons': timing_res['timing_factors']
+                    'snapshot': snapshot,
+                    'reasons': analysis_result.get('confidence_factors', [])
                 })
-                print(f"  ✅ {symbol}: Score {score} | IV Rank {iv_rank} | ROI {roi:.1f}%")
+                print(f"  ✅ {symbol}: Score {composite_score} | Conf {confidence_level}% | ROI {roi:.1f}%")
                 
         except Exception as e:
             continue
