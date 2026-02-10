@@ -1,0 +1,14 @@
+[
+  {
+    "id": "AAPL_20260203_0931",
+    "symbol": "AAPL",
+    "open_date": "2026-02-03",
+    "short_strike": 255.0,
+    "long_strike": 250.0,
+    "expiry": "2026-03-20",
+    "entry_premium": 1.95,
+    "quantity": 1,
+    "status": "OPEN",
+    "pnl": 0
+  }
+]

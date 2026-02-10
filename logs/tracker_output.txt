@@ -1,0 +1,5 @@
+--- BullPS-v3 精準獲利追蹤 (10:06:13) ---
+AAPL: 現價 $270.01 | 價差價值 $0.88 | 獲利 54.6%
+Error sending LINE message: Command '['/home/jimmy161688/.npm-global/bin/openclaw', 'message', 'send', '--channel', 'line', '--target', 'U0aae8e070107ce5b7cf7f02cf67ea911', '--message', '💰 【BullPS 停利建議】\n股票: AAPL\n當前獲利: 54.6%\n已達到 50% 獲利目標！\n建議執行 BTC (Buy to Close) 鎖定利潤。']' returned non-zero exit status 1.
+AMZN: 現價 $242.96 | 價差價值 $1.85 | 獲利 7.5%
+DIS: 現價 $104.45 | 價差價值 $0.90 | 獲利 -94.6%

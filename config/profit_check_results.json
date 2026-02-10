@@ -1,0 +1,20 @@
+[
+  {
+    "symbol": "AAPL",
+    "current_price": 270.010009765625,
+    "spread_value": 0.8849999999999998,
+    "alert": false
+  },
+  {
+    "symbol": "AMZN",
+    "current_price": 242.9600067138672,
+    "spread_value": 1.8499999999999988,
+    "alert": false
+  },
+  {
+    "symbol": "DIS",
+    "current_price": 104.44999694824219,
+    "spread_value": 0.365,
+    "alert": true
+  }
+]

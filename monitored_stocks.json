@@ -1,0 +1,26 @@
+[
+  {
+    "symbol": "DIS",
+    "name": "The Walt Disney Company",
+    "market": "US",
+    "entry_date": "2026-02-03",
+    "entry_price": 107.49,
+    "quantity": 1,
+    "short_strike": 100.0,
+    "long_strike": 95.0,
+    "expiry": "2026-03-06",
+    "entry_credit": 0.46
+  },
+  {
+    "symbol": "IWM",
+    "name": "iShares Russell 2000 ETF",
+    "market": "US",
+    "entry_date": "2026-02-04",
+    "entry_price": 262.78,
+    "quantity": 1,
+    "short_strike": 244.0,
+    "long_strike": 239.0,
+    "expiry": "2026-03-13",
+    "entry_credit": 0.58
+  }
+]
